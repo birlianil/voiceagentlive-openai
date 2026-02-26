@@ -182,6 +182,36 @@ curl -X POST http://127.0.0.1:4011/kb/search \
   -d '{"query":"What is VA home loan guaranty?"}'
 ```
 
+Ingest from a local file:
+
+```bash
+npx pnpm@10.15.0 kb:ingest:file --file ./my-docs/va-benefits.md --source local-docs --embed true
+```
+
+## Supabase setup (recommended production DB)
+
+You do not need to upload files into this repo to test. You can push raw text (curl) or use the local file ingest script above.
+
+For Supabase-backed RAG:
+
+1. Create a Supabase project and get Postgres connection string (`sslmode=require`).
+2. Set in `.env`:
+
+```env
+SUPABASE_DB_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+DATABASE_URL=${SUPABASE_DB_URL}
+KB_ENABLED=true
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+```
+
+3. Start tools backend:
+
+```bash
+docker compose --profile tools up -d --build redis tools-api-starter
+```
+
+4. Ingest and query with `/kb/ingest` and `/kb/search`.
+
 ## SDK and API contracts
 
 - JS/TS SDK package: `packages/va-platform-sdk`

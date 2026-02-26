@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "build:sdk": "pnpm --filter @va-platform/voice-sdk build",
     "publish:sdk:private": "pnpm --filter @va-platform/voice-sdk publish:private",
+    "kb:ingest:file": "node scripts/kb/ingest-file.mjs",
     "pack:devkit": "bash scripts/release/package-developer-kit.sh"
   }
 }

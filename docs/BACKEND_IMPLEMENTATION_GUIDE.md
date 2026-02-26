@@ -31,6 +31,15 @@ KB_EMBEDDING_MODEL=text-embedding-3-small
 KB_TOP_K=5
 ```
 
+Supabase production option:
+
+```env
+SUPABASE_DB_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+DATABASE_URL=${SUPABASE_DB_URL}
+```
+
+In this mode, `tools-api-starter` keeps the same API contract and uses Supabase managed Postgres for KB and event data.
+
 ## Core modules
 
 - `apps/tools-api-starter/src/index.ts`

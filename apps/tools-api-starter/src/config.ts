@@ -52,7 +52,7 @@ export function loadConfig(): StarterConfig {
   const config: StarterConfig = {
     port: asNumber(process.env.PORT || process.env.TOOLS_API_STARTER_PORT, 4011),
     databaseUrl:
-      String(process.env.DATABASE_URL || '').trim() ||
+      String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim() ||
       'postgres://postgres:postgres@127.0.0.1:5432/va_voice',
     redisUrl: String(process.env.REDIS_URL || '').trim() || 'redis://127.0.0.1:6379',
     webhookUrl: String(process.env.TOOLS_WEBHOOK_URL || '').trim(),

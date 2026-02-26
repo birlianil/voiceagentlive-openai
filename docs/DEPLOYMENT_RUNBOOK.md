@@ -71,6 +71,11 @@ If auth is enabled:
 4. Secrets in managed vault (not `.env` in runtime).
 5. TLS (`https://` + `wss://`) for all client-facing endpoints.
 
+Supabase variant:
+
+- Replace self-hosted Postgres with Supabase managed Postgres (`DATABASE_URL` / `SUPABASE_DB_URL`).
+- Keep Redis for webhook queue unless you externalize queue provider.
+
 ## Health and readiness
 
 - Liveness: `/health` on token-server and tools API.
