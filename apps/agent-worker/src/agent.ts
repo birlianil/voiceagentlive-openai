@@ -102,6 +102,13 @@ const zLooseOptionalString = z.preprocess(
   },
   z.string().min(1).optional(),
 );
+const zLooseOptionalEmail = z.preprocess(
+  (value) => {
+    const s = extractStringLike(value);
+    return s && s.length > 0 ? s : undefined;
+  },
+  z.string().email().optional(),
+);
 
 class LocalServiceSTT extends stt.STT {
   label = 'local.http.stt';
@@ -356,6 +363,94 @@ class DbAgent extends voice.Agent {
             email: String(args.email),
             datetimeISO: String(args.datetimeISO),
             reason: args.reason ? String(args.reason) : 'general',
+          }),
+      }),
+      check_availability_cal: llm.tool({
+        description:
+          'Check calendar slot availability for a date/date-range and preferred time of day.',
+        parameters: z.object({
+          dateFromISO: zLooseOptionalString,
+          dateToISO: zLooseOptionalString,
+          preferredTimeOfDay: zLooseOptionalString,
+        }),
+        execute: async ({ dateFromISO, dateToISO, preferredTimeOfDay }) =>
+          dbPost('/calendar/availability', {
+            dateFromISO: dateFromISO ? String(dateFromISO) : undefined,
+            dateToISO: dateToISO ? String(dateToISO) : undefined,
+            preferredTimeOfDay: preferredTimeOfDay ? String(preferredTimeOfDay) : 'any',
+          }),
+      }),
+      book_appointment_cal: llm.tool({
+        description:
+          'Book a calendar appointment after confirming appointment type, date/time, and clinic/facility.',
+        parameters: z.object({
+          datetimeISO: zLooseString,
+          appointmentType: zLooseOptionalString,
+          facility: zLooseOptionalString,
+          reason: zLooseOptionalString,
+          name: zLooseOptionalString,
+          email: zLooseOptionalEmail,
+        }),
+        execute: async ({ datetimeISO, appointmentType, facility, reason, name, email }) =>
+          dbPost('/calendar/book', {
+            datetimeISO: String(datetimeISO),
+            appointmentType: appointmentType ? String(appointmentType) : 'general',
+            facility: facility ? String(facility) : 'va-clinic',
+            reason: reason ? String(reason) : 'general',
+            name: name ? String(name) : undefined,
+            email: email ? String(email) : undefined,
+          }),
+      }),
+      send_call_summary_email: llm.tool({
+        description:
+          'Send a short call-summary email when customer requested recap and email is available.',
+        parameters: z.object({
+          summary: zLooseString,
+          email: zLooseOptionalEmail,
+          customer_name: zLooseOptionalString,
+        }),
+        execute: async ({ summary, email, customer_name }) =>
+          dbPost('/retell/send_call_summary_email', {
+            summary: String(summary),
+            email: email ? String(email) : undefined,
+            customer_name: customer_name ? String(customer_name) : undefined,
+          }),
+      }),
+      transfer_call: llm.tool({
+        description: 'Transfer caller to a real person when requested.',
+        parameters: z.object({
+          reason: zLooseOptionalString,
+          target: zLooseOptionalString,
+        }),
+        execute: async ({ reason, target }) =>
+          dbPost('/retell/transfer_call', {
+            reason: reason ? String(reason) : undefined,
+            target: target ? String(target) : undefined,
+          }),
+      }),
+      press_digit_get: llm.tool({
+        description: 'Prompt caller to enter phone number from keypad.',
+        parameters: z.object({
+          prompt: zLooseOptionalString,
+        }),
+        execute: async ({ prompt }) =>
+          dbPost('/retell/press_digit_get', {
+            prompt: prompt ? String(prompt) : 'Please enter your phone number on keypad.',
+          }),
+      }),
+      press_digit_medrics: llm.tool({
+        description: 'Ask caller to press digit 5 before transfer to creator company.',
+        parameters: z.object({}),
+        execute: async () => dbPost('/retell/press_digit_medrics', {}),
+      }),
+      end_call: llm.tool({
+        description: 'End call once conversation is complete and user confirms no further help is needed.',
+        parameters: z.object({
+          reason: zLooseOptionalString,
+        }),
+        execute: async ({ reason }) =>
+          dbPost('/retell/end_call', {
+            reason: reason ? String(reason) : 'completed',
           }),
       }),
     };
