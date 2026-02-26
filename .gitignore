@@ -1,0 +1,6 @@
+node_modules
+.pnpm-store
+.env
+dist
+__pycache__
+*.pyc

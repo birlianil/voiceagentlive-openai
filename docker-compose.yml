@@ -1,0 +1,52 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1", "--udp-port", "7882"]
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+      - "50000-50100:50000-50100/udp"
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  db-mock:
+    build: ./apps/db-mock
+    environment:
+      - PORT=4010
+    ports:
+      - "4010:4010"
+
+  stt-svc:
+    build: ./apps/stt-svc
+    environment:
+      - PORT=4020
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_BEAM_SIZE=${WHISPER_BEAM_SIZE:-5}
+      - WHISPER_BEST_OF=${WHISPER_BEST_OF:-5}
+      - WHISPER_TEMPERATURE=${WHISPER_TEMPERATURE:-0.0}
+    ports:
+      - "4020:4020"
+
+  tts-svc:
+    build: ./apps/tts-svc
+    environment:
+      - PORT=4030
+      - PIPER_MODEL=${PIPER_MODEL:-en_US-amy-medium}
+      - PIPER_MODEL_URL=${PIPER_MODEL_URL:-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx}
+      - PIPER_CONFIG_URL=${PIPER_CONFIG_URL:-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json}
+      - PIPER_VOICE_DIR=/models
+    ports:
+      - "4030:4030"
+    volumes:
+      - piper_models:/models
+
+volumes:
+  ollama_data:
+  piper_models:

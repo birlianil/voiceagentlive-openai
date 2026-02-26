@@ -1,0 +1,24 @@
+{
+  "name": "agent-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts dev",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.0.47",
+    "@livekit/agents-plugin-openai": "^1.0.47",
+    "@livekit/agents-plugin-silero": "^1.0.47",
+    "@livekit/rtc-node": "^0.13.24",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}
