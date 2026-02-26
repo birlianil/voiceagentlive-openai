@@ -4,6 +4,12 @@
 
 A LiveKit-based real-time voice agent for VA-related conversations, with tool calling to backend endpoints for search, appointments, and call-control actions.
 
+This repo now also includes a distribution-ready developer kit:
+
+- JS/TS SDK: `packages/va-platform-sdk`
+- OpenAPI contracts: `openapi/`
+- Team-specific integration/runbook docs: `docs/`
+
 ## Core runtime path
 
 1. Token issued by `token-server` (`/token`).
@@ -31,5 +37,6 @@ Voice interruption thresholds were increased to reduce false interrupts and TTS 
 ## Where developers should start
 
 - System overview: `docs/ARCHITECTURE.md`
+- End-to-end packaging blueprint: `docs/PRODUCTIZATION_E2E.md`
 - Tuning and ops: `docs/TUNING.md`
 - Prompt/tool/endpoint integration: `docs/INTEGRATION_GUIDE.md`

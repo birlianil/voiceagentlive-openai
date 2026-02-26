@@ -1,0 +1,331 @@
+openapi: 3.0.3
+info:
+  title: VA Voice Platform Tool Backend API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:4010
+paths:
+  /health:
+    get:
+      operationId: toolsHealth
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /search:
+    get:
+      operationId: searchKb
+      summary: Search knowledge base
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Search response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        text:
+                          type: string
+                      required: [id, title, text]
+                required: [query, results]
+
+  /contact:
+    post:
+      operationId: saveContact
+      summary: Save contact info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+              required: [name, email]
+      responses:
+        '200':
+          description: Contact saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkId'
+
+  /appointments:
+    post:
+      operationId: createAppointment
+      summary: Create appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                datetimeISO:
+                  type: string
+                reason:
+                  type: string
+              required: [name, email, datetimeISO]
+      responses:
+        '200':
+          description: Appointment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkId'
+
+  /calendar/availability:
+    post:
+      operationId: checkCalendarAvailability
+      summary: Check available slots
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dateFromISO:
+                  type: string
+                dateToISO:
+                  type: string
+                preferredTimeOfDay:
+                  type: string
+      responses:
+        '200':
+          description: Availability result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  query:
+                    type: object
+                    properties:
+                      dateFromISO:
+                        type: string
+                      dateToISO:
+                        type: string
+                      preferredTimeOfDay:
+                        type: string
+                    required: [dateFromISO, dateToISO, preferredTimeOfDay]
+                  slots:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        datetimeISO:
+                          type: string
+                        available:
+                          type: boolean
+                      required: [datetimeISO, available]
+                required: [ok, query, slots]
+
+  /calendar/book:
+    post:
+      operationId: bookCalendar
+      summary: Book appointment slot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                datetimeISO:
+                  type: string
+                appointmentType:
+                  type: string
+                facility:
+                  type: string
+                reason:
+                  type: string
+                name:
+                  type: string
+                email:
+                  type: string
+              required: [datetimeISO]
+      responses:
+        '200':
+          description: Booking result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+                  datetimeISO:
+                    type: string
+                  appointmentType:
+                    type: string
+                  facility:
+                    type: string
+                required: [ok, id, datetimeISO]
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /retell/send_call_summary_email:
+    post:
+      operationId: sendCallSummaryEmail
+      summary: Queue call summary email event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summary:
+                  type: string
+                email:
+                  type: string
+                customer_name:
+                  type: string
+              required: [summary]
+      responses:
+        '200':
+          description: Event queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetellResponse'
+
+  /retell/transfer_call:
+    post:
+      operationId: transferCall
+      summary: Transfer call event
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                target:
+                  type: string
+      responses:
+        '200':
+          description: Transferred
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetellResponse'
+
+  /retell/press_digit_medrics:
+    post:
+      operationId: pressDigitMedrics
+      summary: Ask caller to press digit 5
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Digit prompt event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetellResponse'
+
+  /retell/end_call:
+    post:
+      operationId: endCall
+      summary: End call event
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetellResponse'
+
+components:
+  schemas:
+    OkId:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+      required: [ok, id]
+    RetellResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+        status:
+          type: string
+        action:
+          type: string
+        digit:
+          type: string
+        ended:
+          type: boolean
+      required: [ok, id]
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string
+      required: [ok, error]

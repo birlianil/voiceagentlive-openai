@@ -26,6 +26,13 @@ Execution helpers:
 
 - `dbGet(path)` and `dbPost(path, body)` call `DB_API_BASE_URL`.
 
+## 2.1) Prefer SDK for external consumers
+
+For app/backend teams integrating from outside this repo, prefer:
+
+- JS SDK: `packages/va-platform-sdk`
+- Contracts: `openapi/token-server.yaml`, `openapi/tool-backend.yaml`
+
 ## 3) Add a new tool to an external source
 
 ### Step A: add tool in agent

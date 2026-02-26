@@ -20,13 +20,23 @@ This branch runs the assistant with:
 - `apps/db-mock`
 - `apps/stt-svc`
 - `apps/tts-svc`
+- `packages/va-platform-sdk`
+- `openapi/`
+- `scripts/release/`
 
 ## Documentation
 
 - Developer index: `docs/README.md`
 - Architecture + diagrams: `docs/ARCHITECTURE.md`
+- Productization blueprint: `docs/PRODUCTIZATION_E2E.md`
+- Deployment runbook: `docs/DEPLOYMENT_RUNBOOK.md`
 - Tuning profile and rationale: `docs/TUNING.md`
 - Prompt/tool integration guide: `docs/INTEGRATION_GUIDE.md`
+- API contracts and webhooks: `docs/API_CONTRACTS.md`
+- React Native integration: `docs/CLIENT_REACT_NATIVE.md`
+- Native iOS/Android integration: `docs/CLIENT_NATIVE.md`
+- SDK publishing guide: `docs/SDK_PUBLISHING.md`
+- Optional multi-repo split: `docs/REPO_SPLIT.md`
 - Short shareable summary: `docs/SUMMARY_SHORT.md`
 
 ## 1) Environment
@@ -112,6 +122,21 @@ http://127.0.0.1:3000/token?room=test_room&identity=anil
 - `POST /retell/end_call`
 
 Base URL: `DB_API_BASE_URL`
+
+## SDK and API contracts
+
+- JS/TS SDK package: `packages/va-platform-sdk`
+- OpenAPI contracts:
+  - `openapi/token-server.yaml`
+  - `openapi/tool-backend.yaml`
+
+## Developer kit packaging
+
+```bash
+pnpm pack:devkit
+```
+
+Creates a distributable bundle under `dist/`.
 
 ## Build
 

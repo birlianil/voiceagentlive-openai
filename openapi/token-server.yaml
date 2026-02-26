@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: VA Voice Platform Token Server API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:3000
+paths:
+  /health:
+    get:
+      operationId: tokenHealth
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+  /token:
+    get:
+      operationId: getToken
+      summary: Create LiveKit access token
+      parameters:
+        - in: query
+          name: room
+          schema:
+            type: string
+          required: false
+          description: LiveKit room name
+        - in: query
+          name: identity
+          schema:
+            type: string
+          required: false
+          description: Participant identity
+        - in: query
+          name: ttl
+          schema:
+            type: string
+          required: false
+          description: Token lifetime (e.g. 24h)
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /token/raw:
+    get:
+      operationId: getRawToken
+      summary: Create raw LiveKit access token
+      parameters:
+        - in: query
+          name: room
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: identity
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: ttl
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: JWT token string
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Error
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        room:
+          type: string
+        identity:
+          type: string
+        ttl:
+          type: string
+        agentName:
+          type: string
+      required: [token, room, identity, ttl, agentName]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "pnpm --parallel --filter token-server --filter agent-worker dev",
     "dev:all": "pnpm -r --parallel dev",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "build:sdk": "pnpm --filter @va-platform/voice-sdk build",
+    "pack:devkit": "bash scripts/release/package-developer-kit.sh"
   }
 }
