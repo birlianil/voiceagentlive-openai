@@ -29,6 +29,44 @@ export interface OutboxRecord {
   lastError?: string;
 }
 
+export interface UpsertKbDocumentInput {
+  id: string;
+  title: string;
+  source: string;
+  externalRef?: string;
+  metadata?: Record<string, unknown>;
+  contentHash: string;
+}
+
+export interface ReplaceKbSectionInput {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  metadata?: Record<string, unknown>;
+  embedding?: number[] | null;
+}
+
+export interface KbSearchCandidateRecord {
+  sectionId: string;
+  documentId: string;
+  title: string;
+  source: string;
+  content: string;
+  keywordRank: number;
+  embedding: number[] | null;
+  documentMetadata: Record<string, unknown>;
+  sectionMetadata: Record<string, unknown>;
+}
+
+export interface KbDocumentSummary {
+  id: string;
+  title: string;
+  source: string;
+  externalRef?: string;
+  updatedAt: string;
+  sectionCount: number;
+}
+
 export class StarterDb {
   private readonly pool: Pool;
 
@@ -86,6 +124,41 @@ export class StarterDb {
 
     await this.pool.query(
       `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'unknown_event'`,
+    );
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS kb_documents (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        external_ref TEXT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        content_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS kb_sections (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        embedding JSONB NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_sections_document_chunk ON kb_sections(document_id, chunk_index)`,
+    );
+    await this.pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_kb_sections_fts ON kb_sections USING GIN (to_tsvector('simple', content))`,
+    );
+    await this.pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_kb_documents_source ON kb_documents(source)`,
     );
   }
 
@@ -230,6 +303,203 @@ export class StarterDb {
       `,
       [id, retryCount, lastError],
     );
+  }
+
+  async upsertKbDocument(input: UpsertKbDocumentInput): Promise<void> {
+    await this.pool.query(
+      `
+        INSERT INTO kb_documents (id, title, source, external_ref, metadata, content_hash, updated_at)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          source = EXCLUDED.source,
+          external_ref = EXCLUDED.external_ref,
+          metadata = EXCLUDED.metadata,
+          content_hash = EXCLUDED.content_hash,
+          updated_at = NOW()
+      `,
+      [
+        input.id,
+        input.title,
+        input.source,
+        input.externalRef || null,
+        JSON.stringify(input.metadata || {}),
+        input.contentHash,
+      ],
+    );
+  }
+
+  async replaceKbSections(documentId: string, sections: ReplaceKbSectionInput[]): Promise<void> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM kb_sections WHERE document_id = $1`, [documentId]);
+
+      for (const section of sections) {
+        await client.query(
+          `
+            INSERT INTO kb_sections (id, document_id, chunk_index, content, metadata, embedding)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+          `,
+          [
+            section.id,
+            documentId,
+            section.chunkIndex,
+            section.content,
+            JSON.stringify(section.metadata || {}),
+            section.embedding ? JSON.stringify(section.embedding) : null,
+          ],
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async countKbSections(): Promise<number> {
+    const result = await this.pool.query(`SELECT COUNT(*)::BIGINT AS count FROM kb_sections`);
+    const row = result.rows[0] as { count: string | number } | undefined;
+    return row ? Number(row.count) : 0;
+  }
+
+  async searchKbKeyword(query: string, limit: number, source?: string): Promise<KbSearchCandidateRecord[]> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) return [];
+
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 40;
+
+    const ftsResult = await this.pool.query(
+      `
+        SELECT
+          s.id AS section_id,
+          s.document_id,
+          d.title,
+          d.source,
+          s.content,
+          s.embedding,
+          d.metadata AS document_metadata,
+          s.metadata AS section_metadata,
+          ts_rank_cd(to_tsvector('simple', s.content), plainto_tsquery('simple', $1)) AS keyword_rank
+        FROM kb_sections s
+        INNER JOIN kb_documents d ON d.id = s.document_id
+        WHERE to_tsvector('simple', s.content) @@ plainto_tsquery('simple', $1)
+          AND ($2::TEXT IS NULL OR d.source = $2)
+        ORDER BY keyword_rank DESC, s.created_at DESC
+        LIMIT $3
+      `,
+      [normalizedQuery, source || null, safeLimit],
+    );
+
+    const rows = ftsResult.rows;
+    if (rows.length > 0) {
+      return rows.map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          sectionId: String(r.section_id || ''),
+          documentId: String(r.document_id || ''),
+          title: String(r.title || ''),
+          source: String(r.source || ''),
+          content: String(r.content || ''),
+          keywordRank: Number(r.keyword_rank || 0),
+          embedding: Array.isArray(r.embedding) ? (r.embedding as number[]) : null,
+          documentMetadata: (r.document_metadata || {}) as Record<string, unknown>,
+          sectionMetadata: (r.section_metadata || {}) as Record<string, unknown>,
+        };
+      });
+    }
+
+    const tokens = normalizedQuery
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 3)
+      .slice(0, 12);
+
+    const likeResult = await this.pool.query(
+      `
+        SELECT
+          s.id AS section_id,
+          s.document_id,
+          d.title,
+          d.source,
+          s.content,
+          s.embedding,
+          d.metadata AS document_metadata,
+          s.metadata AS section_metadata
+        FROM kb_sections s
+        INNER JOIN kb_documents d ON d.id = s.document_id
+        WHERE (
+          s.content ILIKE '%' || $1 || '%'
+          OR d.title ILIKE '%' || $1 || '%'
+          OR EXISTS (
+            SELECT 1
+            FROM UNNEST($4::TEXT[]) AS token
+            WHERE s.content ILIKE '%' || token || '%'
+              OR d.title ILIKE '%' || token || '%'
+          )
+        )
+          AND ($2::TEXT IS NULL OR d.source = $2)
+        ORDER BY s.created_at DESC
+        LIMIT $3
+      `,
+      [normalizedQuery, source || null, safeLimit, tokens],
+    );
+
+    return likeResult.rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        sectionId: String(r.section_id || ''),
+        documentId: String(r.document_id || ''),
+        title: String(r.title || ''),
+        source: String(r.source || ''),
+        content: String(r.content || ''),
+        keywordRank: 0.0001,
+        embedding: Array.isArray(r.embedding) ? (r.embedding as number[]) : null,
+        documentMetadata: (r.document_metadata || {}) as Record<string, unknown>,
+        sectionMetadata: (r.section_metadata || {}) as Record<string, unknown>,
+      };
+    });
+  }
+
+  async listKbDocuments(limit = 100): Promise<KbDocumentSummary[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 100;
+    const result = await this.pool.query(
+      `
+        SELECT
+          d.id,
+          d.title,
+          d.source,
+          d.external_ref,
+          d.updated_at,
+          COUNT(s.id)::INTEGER AS section_count
+        FROM kb_documents d
+        LEFT JOIN kb_sections s ON s.document_id = d.id
+        GROUP BY d.id
+        ORDER BY d.updated_at DESC
+        LIMIT $1
+      `,
+      [safeLimit],
+    );
+
+    return result.rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      const externalRef = r.external_ref;
+      return {
+        id: String(r.id || ''),
+        title: String(r.title || ''),
+        source: String(r.source || ''),
+        ...(typeof externalRef === 'string' && externalRef.length > 0 ? { externalRef } : {}),
+        updatedAt: new Date(String(r.updated_at || new Date().toISOString())).toISOString(),
+        sectionCount: Number(r.section_count || 0),
+      };
+    });
   }
 
   async listRecentEvents(limit = 100): Promise<ToolEventRecord[]> {

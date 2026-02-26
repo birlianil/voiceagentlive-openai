@@ -6,6 +6,7 @@
 
 - Express API with request IDs and CORS controls
 - Postgres persistence for contacts, appointments, events, outbox
+- Tool-based RAG endpoints (`/kb/ingest`, `/kb/search`, `/kb/documents`)
 - Redis/BullMQ queue worker for webhook delivery retries
 - Optional bearer auth for service-to-service protection
 
@@ -25,6 +26,9 @@ TOOLS_API_AUTH_TOKEN=change-me-tools-token
 DB_API_AUTH_TOKEN=change-me-tools-token
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/va_voice
 REDIS_URL=redis://127.0.0.1:6379
+KB_ENABLED=true
+KB_EMBEDDING_MODEL=text-embedding-3-small
+KB_TOP_K=5
 ```
 
 ## Core modules
@@ -38,6 +42,8 @@ REDIS_URL=redis://127.0.0.1:6379
   - BullMQ queue + worker registration
 - `apps/tools-api-starter/src/webhook.ts`
   - outbound webhook dispatch and optional HMAC signing
+- `apps/tools-api-starter/src/kb.ts`
+  - chunking, embedding calls, and retrieval scoring helpers
 
 ## Data model
 
@@ -47,6 +53,15 @@ Minimum schema created on startup:
 - `appointments(id, name, email, datetime_iso, appointment_type, facility, reason, created_at)`
 - `tool_events(id, event_type, payload, status, created_at)`
 - `outbox(id, event_id, event_type, destination, payload, status, retry_count, last_error, next_attempt_at, created_at)`
+- `kb_documents(id, title, source, external_ref, metadata, content_hash, created_at, updated_at)`
+- `kb_sections(id, document_id, chunk_index, content, metadata, embedding, created_at)`
+
+## RAG flow
+
+1. Ingest documents via `/kb/ingest` (chunks + optional embeddings).
+2. Agent calls `/kb/search` for retrieval.
+3. Backend performs keyword search and optional semantic rerank.
+4. Response includes snippets and citation metadata.
 
 ## Event/outbox lifecycle
 

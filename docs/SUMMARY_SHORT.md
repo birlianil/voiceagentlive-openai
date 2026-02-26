@@ -28,6 +28,7 @@ This repo now also includes a distribution-ready developer kit:
 - Token server supports API key protection + rate limiting.
 - Tools starter uses Postgres + Redis/BullMQ with outbox retries.
 - Worker can call tools backend with bearer token (`DB_API_AUTH_TOKEN`).
+- Knowledge retrieval now uses tool-RAG (`/kb/ingest` + `/kb/search`) with citations.
 
 ## Stability profile
 

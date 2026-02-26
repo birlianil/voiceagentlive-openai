@@ -29,7 +29,7 @@ paths:
   /search:
     get:
       operationId: searchKb
-      summary: Search knowledge base
+      summary: Legacy knowledge search endpoint (prefer /kb/search)
       parameters:
         - in: query
           name: q
@@ -59,6 +59,84 @@ paths:
                           type: string
                       required: [id, title, text]
                 required: [query, results]
+
+  /kb/ingest:
+    post:
+      operationId: kbIngest
+      summary: Ingest or update a document in the knowledge base
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KbIngestRequest'
+      responses:
+        '200':
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KbIngestResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kb/search:
+    post:
+      operationId: kbSearch
+      summary: Hybrid knowledge base retrieval (keyword + optional semantic rerank)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KbSearchRequest'
+      responses:
+        '200':
+          description: Retrieval result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KbSearchResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kb/documents:
+    get:
+      operationId: kbListDocuments
+      summary: List ingested knowledge base documents
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          required: false
+      responses:
+        '200':
+          description: Documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  count:
+                    type: integer
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KbDocumentSummary'
+                required: [ok, count, documents]
 
   /contact:
     post:
@@ -357,6 +435,132 @@ components:
         id:
           type: string
       required: [ok, id]
+    KbIngestRequest:
+      type: object
+      properties:
+        documentId:
+          type: string
+        title:
+          type: string
+        source:
+          type: string
+        externalRef:
+          type: string
+        content:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        embed:
+          type: boolean
+        chunkSize:
+          type: integer
+        chunkOverlap:
+          type: integer
+      required: [content]
+    KbIngestResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        documentId:
+          type: string
+        sectionCount:
+          type: integer
+        embeddedCount:
+          type: integer
+        contentHash:
+          type: string
+      required: [ok, documentId, sectionCount, embeddedCount, contentHash]
+    KbSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        source:
+          type: string
+        topK:
+          type: integer
+      required: [query]
+    KbDocumentSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        source:
+          type: string
+        externalRef:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        sectionCount:
+          type: integer
+      required: [id, title, source, updatedAt, sectionCount]
+    KbSearchResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        query:
+          type: string
+        topK:
+          type: integer
+        totalCandidates:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              sectionId:
+                type: string
+              documentId:
+                type: string
+              title:
+                type: string
+              source:
+                type: string
+              snippet:
+                type: string
+              content:
+                type: string
+              score:
+                type: object
+                properties:
+                  fused:
+                    type: number
+                  keyword:
+                    type: number
+                  semantic:
+                    type: number
+                required: [fused, keyword, semantic]
+              citation:
+                type: object
+                properties:
+                  documentId:
+                    type: string
+                  sectionId:
+                    type: string
+                  title:
+                    type: string
+                  source:
+                    type: string
+                required: [documentId, sectionId, title, source]
+              metadata:
+                type: object
+                properties:
+                  document:
+                    type: object
+                    additionalProperties: true
+                  section:
+                    type: object
+                    additionalProperties: true
+                required: [document, section]
+            required: [sectionId, documentId, title, source, snippet, content, score, citation, metadata]
+      required: [ok, query, topK, totalCandidates, results]
     RetellResponse:
       type: object
       properties:

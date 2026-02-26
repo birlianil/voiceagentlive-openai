@@ -6,12 +6,13 @@ import { type Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 
 import { loadConfig } from './config.js';
-import { StarterDb } from './db.js';
+import { StarterDb, type KbSearchCandidateRecord } from './db.js';
+import { chunkKbText, cosineSimilarity, createOpenAiEmbeddings, hashKbContent, parseEmbedding, truncateForSnippet } from './kb.js';
 import { createOutboxQueue, type OutboxJobData, type OutboxQueueHandle } from './queue.js';
 import { createRequestId, getBearerToken, parseCorsOrigin, timingSafeTokenEquals } from './security.js';
 import { dispatchWebhook } from './webhook.js';
 
-const KB = [
+const DEFAULT_KB = [
   { id: 'policy_1', title: 'Clinic hours', text: 'Clinic is open Mon-Fri 09:00-17:00.' },
   {
     id: 'policy_2',
@@ -19,6 +20,39 @@ const KB = [
     text: 'Appointments can be booked up to 30 days in advance.',
   },
 ];
+
+interface KbIngestRequestBody {
+  documentId?: string;
+  title?: string;
+  source?: string;
+  externalRef?: string;
+  content?: string;
+  metadata?: Record<string, unknown>;
+  embed?: boolean;
+  chunkSize?: number;
+  chunkOverlap?: number;
+}
+
+interface KbSearchRequestBody {
+  query?: string;
+  source?: string;
+  topK?: number;
+}
+
+interface RankedKbResult {
+  sectionId: string;
+  documentId: string;
+  title: string;
+  source: string;
+  content: string;
+  documentMetadata: Record<string, unknown>;
+  sectionMetadata: Record<string, unknown>;
+  score: {
+    fused: number;
+    keyword: number;
+    semantic: number;
+  };
+}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -50,6 +84,26 @@ function asErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function asNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+}
+
+function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function asBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return fallback;
+}
+
 type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 
 function withAsync(handler: AsyncRouteHandler) {
@@ -58,10 +112,236 @@ function withAsync(handler: AsyncRouteHandler) {
   };
 }
 
+function rankKbCandidates(
+  candidates: KbSearchCandidateRecord[],
+  queryEmbedding: number[] | null,
+  keywordWeight: number,
+  semanticWeight: number,
+): RankedKbResult[] {
+  if (candidates.length === 0) return [];
+
+  const maxKeywordRank = Math.max(0.0001, ...candidates.map((x) => x.keywordRank));
+
+  return candidates
+    .map((candidate) => {
+      const keyword = Math.max(0, candidate.keywordRank / maxKeywordRank);
+      let semantic = 0;
+
+      if (queryEmbedding) {
+        const sectionEmbedding = parseEmbedding(candidate.embedding);
+        if (sectionEmbedding && sectionEmbedding.length === queryEmbedding.length) {
+          semantic = Math.max(0, cosineSimilarity(queryEmbedding, sectionEmbedding));
+        }
+      }
+
+      const fused = queryEmbedding
+        ? keywordWeight * keyword + semanticWeight * semantic
+        : keyword;
+
+      return {
+        sectionId: candidate.sectionId,
+        documentId: candidate.documentId,
+        title: candidate.title,
+        source: candidate.source,
+        content: candidate.content,
+        documentMetadata: candidate.documentMetadata,
+        sectionMetadata: candidate.sectionMetadata,
+        score: {
+          fused,
+          keyword,
+          semantic,
+        },
+      };
+    })
+    .sort((a, b) => b.score.fused - a.score.fused);
+}
+
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const db = new StarterDb(config.databaseUrl);
   await db.init();
+
+  async function ingestKnowledgeDocument(
+    payload: KbIngestRequestBody,
+  ): Promise<{ documentId: string; sectionCount: number; embeddedCount: number; contentHash: string }> {
+    if (!config.kbEnabled) {
+      throw new Error('knowledge base is disabled');
+    }
+
+    const rawContent = requireString(payload.content, 'content');
+    const contentHash = hashKbContent(rawContent);
+    const source = optionalString(payload.source) || 'manual';
+    const documentId = optionalString(payload.documentId) || `doc_${contentHash.slice(0, 16)}`;
+    const title =
+      optionalString(payload.title) ||
+      truncateForSnippet(rawContent, 96).replace(/\n/g, ' ') ||
+      `Document ${documentId}`;
+    const externalRef = optionalString(payload.externalRef);
+    const metadata = asOptionalRecord(payload.metadata) || {};
+
+    const chunkSize = Math.max(200, Math.floor(asNumber(payload.chunkSize, config.kbChunkSize)));
+    const chunkOverlap = Math.max(0, Math.floor(asNumber(payload.chunkOverlap, config.kbChunkOverlap)));
+    const sections = chunkKbText(rawContent, chunkSize, chunkOverlap);
+
+    if (sections.length === 0) {
+      throw new Error('content did not produce any chunks');
+    }
+
+    const embed = asBool(payload.embed, Boolean(config.kbOpenAiApiKey));
+    if (embed && !config.kbOpenAiApiKey) {
+      throw new Error('OPENAI_API_KEY is required when embed=true');
+    }
+
+    let embeddings: number[][] = [];
+    if (embed) {
+      embeddings = await createOpenAiEmbeddings(
+        {
+          apiKey: config.kbOpenAiApiKey,
+          baseUrl: config.kbOpenAiBaseUrl,
+          model: config.kbEmbeddingModel,
+          timeoutMs: config.kbEmbeddingTimeoutMs,
+        },
+        sections.map((x) => x.content),
+      );
+    }
+
+    await db.upsertKbDocument({
+      id: documentId,
+      title,
+      source,
+      externalRef,
+      metadata,
+      contentHash,
+    });
+
+    await db.replaceKbSections(
+      documentId,
+      sections.map((section, index) => ({
+        id: `${documentId}_sec_${section.chunkIndex}`,
+        chunkIndex: section.chunkIndex,
+        content: section.content,
+        metadata: section.metadata,
+        embedding: embeddings[index] || null,
+      })),
+    );
+
+    const embeddedCount = embed ? embeddings.length : 0;
+
+    return {
+      documentId,
+      sectionCount: sections.length,
+      embeddedCount,
+      contentHash,
+    };
+  }
+
+  async function searchKnowledgeBase(payload: KbSearchRequestBody): Promise<{
+    query: string;
+    topK: number;
+    totalCandidates: number;
+    results: Array<{
+      sectionId: string;
+      documentId: string;
+      title: string;
+      source: string;
+      snippet: string;
+      content: string;
+      score: {
+        fused: number;
+        keyword: number;
+        semantic: number;
+      };
+      citation: {
+        documentId: string;
+        sectionId: string;
+        title: string;
+        source: string;
+      };
+      metadata: {
+        document: Record<string, unknown>;
+        section: Record<string, unknown>;
+      };
+    }>;
+  }> {
+    if (!config.kbEnabled) {
+      throw new Error('knowledge base is disabled');
+    }
+
+    const query = requireString(payload.query, 'query');
+    const source = optionalString(payload.source);
+    const topK = Math.max(1, Math.min(20, Math.floor(asNumber(payload.topK, config.kbTopK))));
+
+    const candidates = await db.searchKbKeyword(query, config.kbKeywordCandidates, source);
+
+    let queryEmbedding: number[] | null = null;
+    const hasEmbeddings = candidates.some((x) => Array.isArray(x.embedding) && x.embedding.length > 0);
+
+    if (hasEmbeddings && config.kbOpenAiApiKey) {
+      try {
+        const vectors = await createOpenAiEmbeddings(
+          {
+            apiKey: config.kbOpenAiApiKey,
+            baseUrl: config.kbOpenAiBaseUrl,
+            model: config.kbEmbeddingModel,
+            timeoutMs: config.kbEmbeddingTimeoutMs,
+          },
+          [query],
+        );
+        queryEmbedding = vectors[0] || null;
+      } catch (err) {
+        console.warn(`[kb:search] embeddings disabled for query: ${asErrorMessage(err)}`);
+      }
+    }
+
+    const ranked = rankKbCandidates(
+      candidates,
+      queryEmbedding,
+      config.kbKeywordWeight,
+      config.kbSemanticWeight,
+    ).slice(0, topK);
+
+    return {
+      query,
+      topK,
+      totalCandidates: candidates.length,
+      results: ranked.map((item) => ({
+        sectionId: item.sectionId,
+        documentId: item.documentId,
+        title: item.title,
+        source: item.source,
+        snippet: truncateForSnippet(item.content, 360),
+        content: item.content,
+        score: item.score,
+        citation: {
+          documentId: item.documentId,
+          sectionId: item.sectionId,
+          title: item.title,
+          source: item.source,
+        },
+        metadata: {
+          document: item.documentMetadata,
+          section: item.sectionMetadata,
+        },
+      })),
+    };
+  }
+
+  if (config.kbEnabled) {
+    const sectionCount = await db.countKbSections();
+    if (sectionCount === 0) {
+      for (const doc of DEFAULT_KB) {
+        await ingestKnowledgeDocument({
+          documentId: doc.id,
+          title: doc.title,
+          source: 'default',
+          content: doc.text,
+          metadata: { seed: true },
+          embed: false,
+        });
+      }
+      console.log('[kb:seed] inserted default knowledge documents');
+    }
+  }
 
   let outboxQueue: OutboxQueueHandle | null = null;
 
@@ -142,14 +422,59 @@ async function bootstrap(): Promise<void> {
     res.json({ ok: true, service: 'tools-api-starter' });
   });
 
-  app.get('/search', (req: Request, res: Response) => {
-    const q = asString(req.query.q).toLowerCase();
-    const results = !q
-      ? []
-      : KB.filter((x) => (x.title + ' ' + x.text).toLowerCase().includes(q)).slice(0, 10);
+  app.get('/search', withAsync(async (req: Request, res: Response) => {
+    const q = asString(req.query.q);
+    if (!q) {
+      res.json({ query: q, results: [] });
+      return;
+    }
 
-    res.json({ query: q, results });
-  });
+    const result = await searchKnowledgeBase({ query: q, topK: 10 });
+    res.json({
+      query: result.query,
+      results: result.results.map((x) => ({
+        id: x.sectionId,
+        title: x.title,
+        text: x.snippet,
+      })),
+    });
+  }));
+
+  app.post('/kb/ingest', withAsync(async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as KbIngestRequestBody;
+      const result = await ingestKnowledgeDocument(payload);
+      res.json({
+        ok: true,
+        ...result,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: asErrorMessage(err) });
+    }
+  }));
+
+  app.post('/kb/search', withAsync(async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as KbSearchRequestBody;
+      const result = await searchKnowledgeBase(payload);
+      res.json({
+        ok: true,
+        ...result,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: asErrorMessage(err) });
+    }
+  }));
+
+  app.get('/kb/documents', withAsync(async (req: Request, res: Response) => {
+    const limit = Math.max(1, Math.min(200, Math.floor(asNumber(req.query.limit, 100))));
+    const documents = await db.listKbDocuments(limit);
+    res.json({
+      ok: true,
+      count: documents.length,
+      documents,
+    });
+  }));
 
   app.post('/contact', async (req: Request, res: Response) => {
     try {
@@ -318,6 +643,9 @@ async function bootstrap(): Promise<void> {
     console.log(`[startup] db=${config.databaseUrl}`);
     console.log(`[startup] redis=${config.redisUrl}`);
     console.log(`[startup] authRequired=${config.authRequired}`);
+    console.log(
+      `[startup] kbEnabled=${config.kbEnabled} kbModel=${config.kbEmbeddingModel} weights=${config.kbKeywordWeight.toFixed(2)}/${config.kbSemanticWeight.toFixed(2)}`,
+    );
     if (config.webhookUrl) {
       console.log(`[startup] webhook enabled -> ${config.webhookUrl}`);
     } else {

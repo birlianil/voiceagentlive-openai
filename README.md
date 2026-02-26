@@ -145,7 +145,7 @@ If token API key protection is enabled (`TOKEN_SERVER_REQUIRE_API_KEY=true`), se
 
 ## Tool endpoints used by the agent
 
-- `GET /search?q=...`
+- `POST /kb/search` (primary RAG retrieval path)
 - `POST /contact`
 - `POST /appointments`
 - `POST /calendar/availability`
@@ -158,6 +158,29 @@ If token API key protection is enabled (`TOKEN_SERVER_REQUIRE_API_KEY=true`), se
 Base URL: `DB_API_BASE_URL`
 
 Production-oriented backend starter default URL: `http://127.0.0.1:4011`
+
+## Knowledge base (RAG) quick start
+
+Ingest a document:
+
+```bash
+curl -X POST http://127.0.0.1:4011/kb/ingest \
+  -H "content-type: application/json" \
+  -d '{
+    "title":"VA Home Loan Basics",
+    "source":"va.gov",
+    "content":"VA home loan guaranty helps eligible Veterans buy, build, repair, or refinance a home.",
+    "embed": true
+  }'
+```
+
+Search the KB:
+
+```bash
+curl -X POST http://127.0.0.1:4011/kb/search \
+  -H "content-type: application/json" \
+  -d '{"query":"What is VA home loan guaranty?"}'
+```
 
 ## SDK and API contracts
 

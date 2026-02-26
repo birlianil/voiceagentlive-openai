@@ -15,7 +15,7 @@ This repository is now structured as a deployable platform bundle for:
   - `apps/agent-worker`
   - `apps/token-server`
   - `apps/db-mock` (replaceable with real backend)
-  - `apps/tools-api-starter` (production-oriented backend starting point)
+  - `apps/tools-api-starter` (production-oriented backend starting point with tool-RAG)
 - Platform SDK:
   - `packages/va-platform-sdk`
 - API contracts:

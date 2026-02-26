@@ -8,7 +8,7 @@
 | token-server | Yes | 3000 | LiveKit token minting + agent dispatch |
 | agent-worker | Yes | worker process | Runs VAly orchestration + tools |
 | db-mock | Optional (dev only) | 4010 | No persistence |
-| tools-api-starter | Recommended | 4011 | Postgres + Redis backed |
+| tools-api-starter | Recommended | 4011 | Postgres + Redis backed + tool-RAG endpoints |
 | Postgres | Required for starter | 5432 | Contacts/appointments/events/outbox |
 | Redis | Required for starter webhook queue | 6379 | BullMQ queue and retries |
 | stt-svc | Optional | 4020 | Only when `USE_OPENAI_STT=false` |
@@ -56,6 +56,7 @@ Validate:
 - `GET http://127.0.0.1:3000/health`
 - `GET http://127.0.0.1:4011/health`
 - `GET http://127.0.0.1:3000/token?room=test_room&identity=ops`
+- `POST http://127.0.0.1:4011/kb/search` (with sample query)
 
 If auth is enabled:
 

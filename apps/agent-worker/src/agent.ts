@@ -359,9 +359,13 @@ class DbAgent extends voice.Agent {
   constructor() {
     const tools = {
       db_search: llm.tool({
-        description: 'Search the knowledge base / policy store',
+        description: 'Search the knowledge base / policy store and return best citations',
         parameters: z.object({ query: zLooseString }),
-        execute: async ({ query }) => dbGet(`/search?q=${encodeURIComponent(String(query))}`),
+        execute: async ({ query }) =>
+          dbPost('/kb/search', {
+            query: String(query),
+            topK: 5,
+          }),
       }),
       save_contact: llm.tool({
         description: 'Save confirmed user contact info (name + email) into backend',

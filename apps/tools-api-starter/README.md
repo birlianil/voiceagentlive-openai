@@ -7,6 +7,7 @@ Production-oriented starter backend for VAly tool execution.
 - Same endpoint surface as `db-mock`
 - Postgres-backed persistence
 - Redis/BullMQ queue for reliable webhook dispatch
+- Tool-based RAG endpoints (`/kb/ingest`, `/kb/search`)
 - Optional bearer auth for service-to-service access
 - Optional HMAC signing for outbound webhooks
 
@@ -31,11 +32,29 @@ Default port: `4011`.
 - `TOOLS_API_CORS_ORIGIN` (default `*`)
 - `TOOLS_API_REQUIRE_AUTH` (default `false`)
 - `TOOLS_API_AUTH_TOKEN` (required if auth enabled)
+- `KB_ENABLED` (default `true`)
+- `KB_TOP_K` (default `5`)
+- `KB_KEYWORD_CANDIDATES` (default `40`)
+- `KB_CHUNK_SIZE` (default `900`)
+- `KB_CHUNK_OVERLAP` (default `120`)
+- `KB_KEYWORD_WEIGHT` (default `0.35`)
+- `KB_SEMANTIC_WEIGHT` (default `0.65`)
+- `KB_EMBEDDING_MODEL` (default `text-embedding-3-small`)
+- `KB_EMBEDDING_TIMEOUT_MS` (default `12000`)
 - `TOOLS_WEBHOOK_URL` (if empty, events are stored but not delivered externally)
 - `TOOLS_WEBHOOK_SECRET` (enables `x-signature`)
 - `TOOLS_WEBHOOK_TIMEOUT_MS` (default `4000`)
 - `TOOLS_WEBHOOK_MAX_ATTEMPTS` (default `5`)
 - `TOOLS_WEBHOOK_BACKOFF_MS` (default `1000`)
+
+`OPENAI_API_KEY` is required only when you ingest with embeddings (`embed=true`) or want semantic reranking in `/kb/search`.
+
+## Knowledge base endpoints
+
+- `POST /kb/ingest`: create/update a document and chunk it
+- `POST /kb/search`: hybrid retrieval (keyword + optional semantic)
+- `GET /kb/documents`: list ingested documents
+- `GET /search?q=...`: legacy compatibility endpoint mapped to KB search
 
 ## Webhook headers
 

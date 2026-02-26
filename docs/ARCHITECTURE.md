@@ -83,9 +83,10 @@ Defined in `apps/agent-worker/src/agent.ts`:
 - `press_digit_medrics`
 - `end_call`
 
-Backed by endpoints in `apps/db-mock/src/index.ts`:
+Backed by endpoints in `apps/tools-api-starter/src/index.ts` (and compatible `db-mock` subset for local dev):
 
-- `GET /search`
+- `POST /kb/search` (primary retrieval path in `tools-api-starter`)
+- `GET /search` (legacy compatibility endpoint)
 - `POST /contact`
 - `POST /appointments`
 - `POST /calendar/availability`
@@ -94,6 +95,11 @@ Backed by endpoints in `apps/db-mock/src/index.ts`:
 - `POST /retell/transfer_call`
 - `POST /retell/press_digit_medrics`
 - `POST /retell/end_call`
+
+Knowledge ingestion endpoints in `tools-api-starter`:
+
+- `POST /kb/ingest`
+- `GET /kb/documents`
 
 ## Session and logging hooks
 

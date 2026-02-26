@@ -51,6 +51,62 @@ export interface SearchResponse {
   results: Array<{ id: string; title: string; text: string }>;
 }
 
+export interface KbSearchInput {
+  query: string;
+  source?: string;
+  topK?: number;
+}
+
+export interface KbSearchResponse {
+  ok: boolean;
+  query: string;
+  topK: number;
+  totalCandidates: number;
+  results: Array<{
+    sectionId: string;
+    documentId: string;
+    title: string;
+    source: string;
+    snippet: string;
+    content: string;
+    score: {
+      fused: number;
+      keyword: number;
+      semantic: number;
+    };
+    citation: {
+      documentId: string;
+      sectionId: string;
+      title: string;
+      source: string;
+    };
+    metadata: {
+      document: Record<string, unknown>;
+      section: Record<string, unknown>;
+    };
+  }>;
+}
+
+export interface KbIngestInput {
+  documentId?: string;
+  title?: string;
+  source?: string;
+  externalRef?: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+  embed?: boolean;
+  chunkSize?: number;
+  chunkOverlap?: number;
+}
+
+export interface KbIngestResponse {
+  ok: boolean;
+  documentId: string;
+  sectionCount: number;
+  embeddedCount: number;
+  contentHash: string;
+}
+
 export interface ContactResponse {
   ok: boolean;
   id: string;
@@ -262,6 +318,14 @@ export class ToolsApiClient {
 
   search(query: string): Promise<SearchResponse> {
     return this.http.getJson<SearchResponse>('/search', { q: query });
+  }
+
+  kbSearch(input: KbSearchInput): Promise<KbSearchResponse> {
+    return this.http.postJson<KbSearchResponse>('/kb/search', input);
+  }
+
+  kbIngest(input: KbIngestInput): Promise<KbIngestResponse> {
+    return this.http.postJson<KbIngestResponse>('/kb/ingest', input);
   }
 
   saveContact(name: string, email: string): Promise<ContactResponse> {

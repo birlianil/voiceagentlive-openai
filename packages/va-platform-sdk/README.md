@@ -6,6 +6,7 @@ Lightweight client SDK for integrating with the VA voice platform backend.
 
 - `TokenApiClient` for `/token` and `/token/raw`
 - `ToolsApiClient` for tool backend endpoints
+- KB helpers (`kbIngest`, `kbSearch`) for tool-RAG
 - `createVaVoicePlatformClients()` factory
 - Typed responses and a shared `VaSdkHttpError`
 
@@ -29,6 +30,7 @@ const { tokenApi, toolsApi } = createVaVoicePlatformClients({
 
 const token = await tokenApi.getToken({ room: 'test_room', identity: 'mobile_user' });
 const availability = await toolsApi.checkAvailability({ preferredTimeOfDay: 'morning' });
+const kb = await toolsApi.kbSearch({ query: 'VA home loan eligibility' });
 ```
 
 ## Error handling

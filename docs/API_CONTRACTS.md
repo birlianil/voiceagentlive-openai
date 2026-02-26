@@ -22,13 +22,23 @@ These OpenAPI files are the canonical interface documents for client/server inte
 - Optional header: `x-api-key` (when `TOKEN_SERVER_REQUIRE_API_KEY=true`)
 
 2. Internal tool execution
-- `/search`
+- `/kb/ingest`
+- `/kb/search`
+- `/kb/documents`
+- `/search` (legacy compatibility)
 - `/contact`
 - `/appointments`
 - `/calendar/*`
 - `/retell/*`
 - `/internal/events` (operational visibility)
 - Optional header: `Authorization: Bearer <token>` (when `TOOLS_API_REQUIRE_AUTH=true`)
+
+## RAG retrieval pattern
+
+1. Ingest source content through `/kb/ingest` (chunk + optional embeddings).
+2. Agent calls `/kb/search` during conversation.
+3. Backend runs keyword retrieval and optional semantic rerank.
+4. Backend returns snippets + citations for model grounding.
 
 ## Webhook integration pattern
 

@@ -26,6 +26,7 @@ Execution helpers:
 
 - `dbGet(path)` and `dbPost(path, body)` call `DB_API_BASE_URL`.
 - If `DB_API_AUTH_TOKEN` is set, worker sends `Authorization: Bearer <token>`.
+- `db_search` tool now uses `POST /kb/search` (RAG path).
 
 ## 2.1) Prefer SDK for external consumers
 
@@ -87,6 +88,16 @@ Minimal response contract recommendation:
   "status": "queued"
 }
 ```
+
+## 4.1) Knowledge base ingestion + retrieval (RAG)
+
+Recommended flow:
+
+1. Push content with `POST /kb/ingest`.
+2. Agent queries `POST /kb/search`.
+3. Backend returns snippets + citation metadata.
+
+`GET /search` is kept only for compatibility and maps to KB search output.
 
 ## 5) Retell-style behavior notes in this build
 
