@@ -1,45 +1,56 @@
 # tools-api-starter
 
-Production-oriented starter backend for tool execution.
+Production-oriented starter backend for VAly tool execution.
 
 ## Features
 
-- Same endpoint surface as `db-mock` tool API
-- Input validation and consistent error responses
-- Optional outbound webhook dispatch with HMAC signature
-- In-memory storage placeholders that backend teams can replace with DB/queue
+- Same endpoint surface as `db-mock`
+- Postgres-backed persistence
+- Redis/BullMQ queue for reliable webhook dispatch
+- Optional bearer auth for service-to-service access
+- Optional HMAC signing for outbound webhooks
 
 ## Run
 
+From repo root:
+
 ```bash
-pnpm --filter tools-api-starter dev
+npx pnpm@10.15.0 --filter tools-api-starter dev
 ```
 
 Default port: `4011`.
 
-## Environment
+## Required environment
 
 - `PORT` or `TOOLS_API_STARTER_PORT` (default `4011`)
-- `TOOLS_WEBHOOK_URL` optional outbound webhook target
-- `TOOLS_WEBHOOK_SECRET` optional secret for HMAC signature
-- `TOOLS_WEBHOOK_TIMEOUT_MS` webhook timeout in ms (default `4000`)
+- `DATABASE_URL` (default `postgres://postgres:postgres@127.0.0.1:5432/va_voice`)
+- `REDIS_URL` (default `redis://127.0.0.1:6379`)
+
+## Optional environment
+
+- `TOOLS_API_CORS_ORIGIN` (default `*`)
+- `TOOLS_API_REQUIRE_AUTH` (default `false`)
+- `TOOLS_API_AUTH_TOKEN` (required if auth enabled)
+- `TOOLS_WEBHOOK_URL` (if empty, events are stored but not delivered externally)
+- `TOOLS_WEBHOOK_SECRET` (enables `x-signature`)
+- `TOOLS_WEBHOOK_TIMEOUT_MS` (default `4000`)
+- `TOOLS_WEBHOOK_MAX_ATTEMPTS` (default `5`)
+- `TOOLS_WEBHOOK_BACKOFF_MS` (default `1000`)
 
 ## Webhook headers
 
-When webhook is enabled, outbound requests include:
+When webhook dispatch is enabled, outbound requests include:
 
 - `x-event-type`
 - `x-timestamp`
-- `x-signature` (if secret is set)
+- `x-signature` (when secret is set)
 
 Signature format:
 
 - `v1=<hex_hmac_sha256(secret, timestamp + '.' + raw_body)>`
 
-## Replace for production
+## Internal inspection endpoint
 
-Backend team should replace in-memory arrays with:
+- `GET /internal/events?limit=100`
 
-- Persistent database for contacts/appointments/events
-- Queue-backed delivery for external integrations
-- Retries and dead-letter queue for webhook dispatch
+Returns recent tool events and statuses (`queued`, `retrying`, `delivered`, `failed`).

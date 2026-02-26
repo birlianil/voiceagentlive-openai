@@ -44,6 +44,8 @@ flowchart LR
   livekit --> worker[Agent Worker]
   worker --> openai[OpenAI APIs]
   worker --> backend[Tool Backend API]
+  backend --> pg[Postgres]
+  backend --> redis[Redis BullMQ]
 
   sdk[@va-platform/voice-sdk] -. used by .-> rn
   sdk -. used by .-> token
@@ -95,6 +97,9 @@ CI automation:
 - Workflow: `.github/workflows/developer-kit.yml`
 - Trigger: push to `main`/`codex/**` or manual dispatch
 - Output: downloadable `va-voice-developer-kit` artifact
+- Workflow: `.github/workflows/sdk-publish.yml`
+- Trigger: manual dispatch
+- Output: private registry SDK release
 
 ## Quality gates before release
 
@@ -106,5 +111,5 @@ CI automation:
 
 ## Next productization step (recommended)
 
-- Replace `apps/db-mock` with production integration service while keeping the same API contract.
+- Keep `apps/db-mock` only for dev; production path should use `apps/tools-api-starter` or your own service with same contract.
 - Add CI pipeline for OpenAPI lint + SDK build + smoke tests.

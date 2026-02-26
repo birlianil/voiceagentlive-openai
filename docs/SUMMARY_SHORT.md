@@ -25,6 +25,9 @@ This repo now also includes a distribution-ready developer kit:
 - `press_digit_get` is removed.
 - `press_digit_medrics` is active.
 - Prompt updated to avoid placeholder values being sent as literal tool arguments.
+- Token server supports API key protection + rate limiting.
+- Tools starter uses Postgres + Redis/BullMQ with outbox retries.
+- Worker can call tools backend with bearer token (`DB_API_AUTH_TOKEN`).
 
 ## Stability profile
 

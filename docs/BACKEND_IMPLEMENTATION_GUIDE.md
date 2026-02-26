@@ -2,87 +2,79 @@
 
 ## Purpose
 
-This guide is for backend engineers who will turn the current tool backend into production services.
+`apps/tools-api-starter` is now a production-oriented baseline service for VAly tool calls:
 
-## Start point options
+- Express API with request IDs and CORS controls
+- Postgres persistence for contacts, appointments, events, outbox
+- Redis/BullMQ queue worker for webhook delivery retries
+- Optional bearer auth for service-to-service protection
 
-1. Mock baseline: `apps/db-mock`
-- Fast local testing
-- No validation depth, no persistence guarantees
-
-2. Production starter: `apps/tools-api-starter`
-- Endpoint validation and structured errors
-- Optional signed webhook dispatch
-- Clear replacement points for DB/queue providers
-
-Recommended: start from `tools-api-starter`.
-
-## Endpoint contract
-
-Implement exactly per OpenAPI:
-
-- `openapi/tool-backend.yaml`
-
-Keep response envelopes stable to avoid breaking agent behavior and SDK clients.
-
-## Local bootstrap for backend team
+## Local bootstrap (backend team)
 
 ```bash
 npx pnpm@10.15.0 install
-pnpm --filter tools-api-starter dev
+docker compose --profile tools up -d postgres redis tools-api-starter
 ```
 
-Then set in root `.env`:
+Set in root `.env`:
 
 ```env
 DB_API_BASE_URL=http://127.0.0.1:4011
+TOOLS_API_REQUIRE_AUTH=true
+TOOLS_API_AUTH_TOKEN=change-me-tools-token
+DB_API_AUTH_TOKEN=change-me-tools-token
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/va_voice
+REDIS_URL=redis://127.0.0.1:6379
 ```
 
-## Production replacement checklist
+## Core modules
 
-1. Persistence layer
-- Replace in-memory arrays with database repositories.
-- Add migrations for contacts, appointments, event logs.
+- `apps/tools-api-starter/src/index.ts`
+  - HTTP routes, auth middleware, request ID propagation
+  - Retell tool calls enqueue outbox work
+- `apps/tools-api-starter/src/db.ts`
+  - DB schema bootstrap and repository methods
+- `apps/tools-api-starter/src/queue.ts`
+  - BullMQ queue + worker registration
+- `apps/tools-api-starter/src/webhook.ts`
+  - outbound webhook dispatch and optional HMAC signing
 
-2. Outbound integrations
-- Replace direct webhook call with queue worker pattern.
-- Add retry policy and dead-letter queue.
+## Data model
 
-3. Security
-- Add service-to-service auth (JWT/mTLS).
-- Validate and sanitize all inputs.
-- Redact sensitive fields in logs.
-
-4. Observability
-- Add request IDs and structured logging.
-- Export metrics for endpoint latency/error rates.
-
-5. Reliability
-- Add readiness/liveness probes.
-- Add timeout and circuit-breaker strategy for external APIs.
-
-## Suggested data model (minimum)
+Minimum schema created on startup:
 
 - `contacts(id, name, email, created_at)`
-- `appointments(id, contact_id, datetime_iso, type, facility, reason, created_at)`
-- `tool_events(id, event_type, payload_json, status, created_at)`
-- `outbox(id, event_id, destination, status, retry_count, next_attempt_at)`
+- `appointments(id, name, email, datetime_iso, appointment_type, facility, reason, created_at)`
+- `tool_events(id, event_type, payload, status, created_at)`
+- `outbox(id, event_id, event_type, destination, payload, status, retry_count, last_error, next_attempt_at, created_at)`
 
-## Webhook signing reference
+## Event/outbox lifecycle
 
-`tools-api-starter` signs with:
+1. Tool endpoint accepts request and stores `tool_events(status=queued)`.
+2. Outbox row is created with destination webhook URL.
+3. BullMQ worker dequeues and delivers webhook.
+4. On success: `outbox=status=delivered`, `tool_events=status=delivered`.
+5. On failure: exponential retry until `TOOLS_WEBHOOK_MAX_ATTEMPTS`.
+6. Max retries exceeded: `outbox=status=dead`, `tool_events=status=failed`.
 
-- Header `x-signature: v1=<hex_hmac_sha256(secret, timestamp + '.' + raw_body)>`
-- Header `x-timestamp` (unix seconds)
+## Security controls in baseline
 
-Consumer services should verify both signature and timestamp freshness.
+- Bearer token auth (`TOOLS_API_REQUIRE_AUTH`, `TOOLS_API_AUTH_TOKEN`)
+- Timing-safe token compare
+- Helmet HTTP hardening
+- CORS allowlist support (`TOOLS_API_CORS_ORIGIN`)
+- Request IDs via `x-request-id`
 
-## Integration test targets
+## Contract
 
-- `/health`
-- `/calendar/availability`
-- `/calendar/book`
-- `/retell/send_call_summary_email`
-- `/retell/transfer_call`
+Keep endpoint response shapes aligned with:
 
-These are the highest-value paths for call flow continuity.
+- `openapi/tool-backend.yaml`
+
+## Recommended next hardening
+
+1. Add schema validation (zod/ajv) at route boundaries.
+2. Add structured JSON logging with redaction rules.
+3. Add metrics (`/metrics`) for queue depth, retry rate, and latency.
+4. Move schema bootstrap to explicit migrations (Flyway/Prisma/Drizzle/Knex).
+5. Add dead-letter replay tooling for outbox failures.

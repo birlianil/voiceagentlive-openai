@@ -68,10 +68,10 @@ docker compose up -d --build
 
 Note: `ollama` service is optional and disabled by default profile in this branch.
 
-Optional production-oriented backend starter:
+Optional production-oriented backend starter (includes Postgres + Redis):
 
 ```bash
-docker compose --profile tools up -d tools-api-starter
+docker compose --profile tools up -d postgres redis tools-api-starter
 ```
 
 If you still want ollama for experiments:
@@ -109,16 +109,21 @@ npx pnpm@10.15.0 dev
 If you want to run the production-oriented tool backend starter in the same terminal flow:
 
 ```bash
-pnpm dev:with-tools-starter
+npx pnpm@10.15.0 dev:with-tools-starter
 ```
 
-Then set `DB_API_BASE_URL=http://127.0.0.1:4011` in `.env`.
+Then set in `.env`:
+
+- `DB_API_BASE_URL=http://127.0.0.1:4011`
+- `DB_API_AUTH_TOKEN=<TOOLS_API_AUTH_TOKEN>` if `TOOLS_API_REQUIRE_AUTH=true`
 
 ## 5) Get token
 
 ```text
 http://127.0.0.1:3000/token?room=test_room&identity=anil
 ```
+
+If token API key protection is enabled (`TOKEN_SERVER_REQUIRE_API_KEY=true`), send `x-api-key`.
 
 ## 6) Join with LiveKit Meet
 

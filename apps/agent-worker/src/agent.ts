@@ -10,6 +10,7 @@ import { ReadableStream } from 'node:stream/web';
 import { z } from 'zod';
 
 const DB_API_BASE_URL = process.env.DB_API_BASE_URL || 'http://127.0.0.1:4010';
+const DB_API_AUTH_TOKEN = process.env.DB_API_AUTH_TOKEN || '';
 const STT_SERVICE_URL = process.env.STT_SERVICE_URL || 'http://127.0.0.1:4020';
 const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://127.0.0.1:4030';
 
@@ -323,15 +324,24 @@ async function synthesizeTextToFrames(text: string): Promise<AudioFrame[]> {
 }
 
 async function dbGet(path: string) {
-  const res = await fetch(`${DB_API_BASE_URL}${path}`);
+  const res = await fetch(`${DB_API_BASE_URL}${path}`, {
+    headers: DB_API_AUTH_TOKEN ? { authorization: `Bearer ${DB_API_AUTH_TOKEN}` } : undefined,
+  });
   if (!res.ok) throw new Error(`DB GET ${path} failed: ${res.status}`);
   return res.json();
 }
 
 async function dbPost(path: string, body: unknown) {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  };
+  if (DB_API_AUTH_TOKEN) {
+    headers.authorization = `Bearer ${DB_API_AUTH_TOKEN}`;
+  }
+
   const res = await fetch(`${DB_API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`DB POST ${path} failed: ${res.status}`);

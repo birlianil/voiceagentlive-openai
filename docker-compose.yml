@@ -26,13 +26,53 @@ services:
   tools-api-starter:
     build: ./apps/tools-api-starter
     profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - PORT=${TOOLS_API_STARTER_PORT:-4011}
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/va_voice}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TOOLS_API_CORS_ORIGIN=${TOOLS_API_CORS_ORIGIN:-*}
+      - TOOLS_API_REQUIRE_AUTH=${TOOLS_API_REQUIRE_AUTH:-false}
+      - TOOLS_API_AUTH_TOKEN=${TOOLS_API_AUTH_TOKEN:-}
       - TOOLS_WEBHOOK_URL=${TOOLS_WEBHOOK_URL:-}
       - TOOLS_WEBHOOK_SECRET=${TOOLS_WEBHOOK_SECRET:-}
       - TOOLS_WEBHOOK_TIMEOUT_MS=${TOOLS_WEBHOOK_TIMEOUT_MS:-4000}
+      - TOOLS_WEBHOOK_MAX_ATTEMPTS=${TOOLS_WEBHOOK_MAX_ATTEMPTS:-5}
+      - TOOLS_WEBHOOK_BACKOFF_MS=${TOOLS_WEBHOOK_BACKOFF_MS:-1000}
     ports:
-      - "${TOOLS_API_STARTER_PORT:-4011}:4011"
+      - "${TOOLS_API_STARTER_PORT:-4011}:${TOOLS_API_STARTER_PORT:-4011}"
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["tools"]
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-va_voice}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-va_voice}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["tools"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   stt-svc:
     build: ./apps/stt-svc
@@ -61,3 +101,4 @@ services:
 volumes:
   ollama_data:
   piper_models:
+  postgres_data:

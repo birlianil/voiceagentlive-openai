@@ -5,12 +5,14 @@
 | Service | Required | Port | Notes |
 | --- | --- | --- | --- |
 | LiveKit | Yes | 7880/7881/7882 | Realtime media/signaling |
-| token-server | Yes | 3000 | JWT + agent dispatch |
-| agent-worker | Yes | dynamic worker process | Connects to LiveKit + OpenAI + tools API |
-| tool backend API (mock) | Optional | 4010 | `db-mock` for local development |
-| tool backend API (starter) | Recommended | 4011 | `tools-api-starter` for production implementation baseline |
-| stt-svc | Optional | 4020 | Needed when `USE_OPENAI_STT=false` |
-| tts-svc | Optional | 4030 | Needed when `USE_OPENAI_TTS=false` |
+| token-server | Yes | 3000 | LiveKit token minting + agent dispatch |
+| agent-worker | Yes | worker process | Runs VAly orchestration + tools |
+| db-mock | Optional (dev only) | 4010 | No persistence |
+| tools-api-starter | Recommended | 4011 | Postgres + Redis backed |
+| Postgres | Required for starter | 5432 | Contacts/appointments/events/outbox |
+| Redis | Required for starter webhook queue | 6379 | BullMQ queue and retries |
+| stt-svc | Optional | 4020 | Only when `USE_OPENAI_STT=false` |
+| tts-svc | Optional | 4030 | Only when `USE_OPENAI_TTS=false` |
 
 ## Minimum env vars
 
@@ -21,12 +23,19 @@
 - `DB_API_BASE_URL`
 - `AGENT_NAME`
 
-See `.env.example` for full list.
+Security-related in production:
+
+- `TOKEN_SERVER_REQUIRE_API_KEY=true`
+- `TOKEN_SERVER_API_KEYS=<comma-separated-client-keys>`
+- `TOOLS_API_REQUIRE_AUTH=true`
+- `TOOLS_API_AUTH_TOKEN=<shared-token>`
+- `DB_API_AUTH_TOKEN=<same-shared-token>`
 
 ## Local smoke deployment
 
 ```bash
 docker compose up -d --build
+docker compose --profile tools up -d postgres redis tools-api-starter
 npx pnpm@10.15.0 install
 npx pnpm@10.15.0 dev
 ```
@@ -34,68 +43,52 @@ npx pnpm@10.15.0 dev
 Validate:
 
 - `GET http://127.0.0.1:3000/health`
-- `GET http://127.0.0.1:4010/health`
+- `GET http://127.0.0.1:4011/health`
 - `GET http://127.0.0.1:3000/token?room=test_room&identity=ops`
 
-To run production-oriented starter backend instead of `db-mock`:
+If auth is enabled:
 
-```bash
-docker compose --profile tools up -d tools-api-starter
-```
+- token-server: send `x-api-key`
+- tools API: send `Authorization: Bearer <token>`
 
-Then set:
+## Recommended production topology
 
-```env
-DB_API_BASE_URL=http://127.0.0.1:4011
-```
-
-Or run node services together:
-
-```bash
-npx pnpm@10.15.0 dev:with-tools-starter
-```
-
-## Production topology recommendation
-
-1. Deploy token-server behind API gateway.
-2. Deploy agent-worker as autoscaled stateless service.
-3. Deploy tool backend with database + queue integration.
-4. Use managed secrets for OpenAI and LiveKit credentials.
-5. Restrict tool backend to trusted network paths.
+1. API gateway/WAF in front of token-server.
+2. agent-worker as autoscaled stateless pool.
+3. tools-api-starter behind private network with Postgres + Redis.
+4. Secrets in managed vault (not `.env` in runtime).
+5. TLS (`https://` + `wss://`) for all client-facing endpoints.
 
 ## Health and readiness
 
-- Liveness: `/health` on token-server and backend.
-- Worker readiness: monitor startup logs (`registered worker`).
-- Functional health: run periodic token fetch + room join smoke test.
-
-## Observability
-
-Collect and index logs containing:
-
-- `[agent-session:error]`
-- `[agent-session:tools]`
-- `[agent-session:stt]`
-- Worker registration and disconnect events
-
-Track metrics:
-
-- Token request success rate
-- Session start success rate
-- Tool call success/error rate
-- Average response latency
+- Liveness: `/health` on token-server and tools API.
+- Queue health: Redis ping + BullMQ worker alive.
+- Functional health: periodic token request + room join + tool call.
 
 ## Incident quick actions
 
-1. Token failures: verify `LIVEKIT_API_KEY/SECRET`.
-2. No agent in room: verify worker running and `AGENT_NAME` matches token-server dispatch.
-3. Tool failures: verify `DB_API_BASE_URL`, backend health, payload schema.
-4. Audio issues: verify LiveKit ports and TURN/network policy.
+1. Token failures:
+- Verify `LIVEKIT_API_KEY/LIVEKIT_API_SECRET`.
+- Verify client sends valid `x-api-key` when required.
+
+2. Agent not joining room:
+- Verify worker process alive.
+- Verify `AGENT_NAME` matches token dispatch metadata.
+
+3. Tool call failures:
+- Verify `DB_API_BASE_URL`.
+- Verify bearer auth token match (`DB_API_AUTH_TOKEN` vs `TOOLS_API_AUTH_TOKEN`).
+- Verify Postgres and Redis health.
+
+4. Webhook delivery failures:
+- Inspect `/internal/events`.
+- Inspect queue retry logs (`[outbox:failed]`).
+- Check destination availability and HMAC secret mismatch.
 
 ## Security hardening checklist
 
-- Enforce HTTPS/WSS in all client-facing endpoints.
+- Enable API key protection on token-server.
+- Enable bearer auth on tools backend.
+- Restrict CORS origins (`TOKEN_SERVER_CORS_ORIGIN`, `TOOLS_API_CORS_ORIGIN`).
 - Keep `OPENAI_API_KEY` server-side only.
-- Add auth between token-server and external clients.
-- Add auth between worker and tool backend.
-- Redact sensitive logs.
+- Redact sensitive fields in logs and traces.

@@ -19,6 +19,7 @@ These OpenAPI files are the canonical interface documents for client/server inte
 1. Public client-facing
 - `/token`
 - `/token/raw`
+- Optional header: `x-api-key` (when `TOKEN_SERVER_REQUIRE_API_KEY=true`)
 
 2. Internal tool execution
 - `/search`
@@ -26,6 +27,8 @@ These OpenAPI files are the canonical interface documents for client/server inte
 - `/appointments`
 - `/calendar/*`
 - `/retell/*`
+- `/internal/events` (operational visibility)
+- Optional header: `Authorization: Bearer <token>` (when `TOOLS_API_REQUIRE_AUTH=true`)
 
 ## Webhook integration pattern
 

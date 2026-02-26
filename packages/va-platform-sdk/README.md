@@ -23,6 +23,8 @@ import { createVaVoicePlatformClients } from '@va-platform/voice-sdk';
 const { tokenApi, toolsApi } = createVaVoicePlatformClients({
   tokenServerBaseUrl: 'http://127.0.0.1:3000',
   toolsApiBaseUrl: 'http://127.0.0.1:4010',
+  tokenServerApiKey: process.env.TOKEN_SERVER_API_KEY,
+  toolsApiBearerToken: process.env.TOOLS_API_BEARER,
 });
 
 const token = await tokenApi.getToken({ room: 'test_room', identity: 'mobile_user' });
@@ -42,3 +44,8 @@ try {
   }
 }
 ```
+
+## Auth options
+
+- `tokenServerApiKey`: sends `x-api-key` on token requests
+- `toolsApiBearerToken`: sends `Authorization: Bearer <token>` on tool requests

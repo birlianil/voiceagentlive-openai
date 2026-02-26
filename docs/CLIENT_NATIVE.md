@@ -32,14 +32,19 @@ struct TokenResponse: Decodable {
   let agentName: String
 }
 
-func fetchToken(baseUrl: String, room: String, identity: String) async throws -> String {
+func fetchToken(baseUrl: String, room: String, identity: String, apiKey: String?) async throws -> String {
   var components = URLComponents(string: "\(baseUrl)/token")!
   components.queryItems = [
     URLQueryItem(name: "room", value: room),
     URLQueryItem(name: "identity", value: identity)
   ]
 
-  let (data, response) = try await URLSession.shared.data(from: components.url!)
+  var request = URLRequest(url: components.url!)
+  if let apiKey, !apiKey.isEmpty {
+    request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+  }
+
+  let (data, response) = try await URLSession.shared.data(for: request)
   guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
     throw NSError(domain: "Token", code: 1)
   }
@@ -55,7 +60,7 @@ func fetchToken(baseUrl: String, room: String, identity: String) async throws ->
 import LiveKit
 
 let room = Room()
-let token = try await fetchToken(baseUrl: tokenBaseUrl, room: "test_room", identity: "ios_user")
+let token = try await fetchToken(baseUrl: tokenBaseUrl, room: "test_room", identity: "ios_user", apiKey: tokenApiKey)
 try await room.connect(url: livekitWsUrl, token: token)
 ```
 
@@ -74,9 +79,13 @@ data class TokenResponse(
   val agentName: String,
 )
 
-suspend fun fetchToken(baseUrl: String, room: String, identity: String): TokenResponse {
+suspend fun fetchToken(baseUrl: String, room: String, identity: String, apiKey: String?): TokenResponse {
   val url = "$baseUrl/token?room=$room&identity=$identity"
-  val request = okhttp3.Request.Builder().url(url).build()
+  val requestBuilder = okhttp3.Request.Builder().url(url)
+  if (!apiKey.isNullOrBlank()) {
+    requestBuilder.addHeader("x-api-key", apiKey)
+  }
+  val request = requestBuilder.build()
   val client = okhttp3.OkHttpClient()
 
   client.newCall(request).execute().use { resp ->
@@ -90,7 +99,7 @@ suspend fun fetchToken(baseUrl: String, room: String, identity: String): TokenRe
 ### 2) Connect with LiveKit Android SDK
 
 ```kotlin
-val token = fetchToken(tokenBaseUrl, "test_room", "android_user").token
+val token = fetchToken(tokenBaseUrl, "test_room", "android_user", tokenApiKey).token
 val room = io.livekit.android.room.Room(appContext)
 room.connect(livekitWsUrl, token)
 ```
@@ -123,3 +132,4 @@ Repeat for `openapi/tool-backend.yaml` when native app also needs direct tools A
 
 For production, avoid direct app calls to internal tools API unless necessary.
 Preferred pattern: app -> your BFF -> tools backend.
+If direct call is required and backend auth is enabled, send `Authorization: Bearer <token>`.

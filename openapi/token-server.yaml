@@ -24,6 +24,8 @@ paths:
     get:
       operationId: getToken
       summary: Create LiveKit access token
+      security:
+        - TokenServerApiKey: []
       parameters:
         - in: query
           name: room
@@ -56,10 +58,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /token/raw:
     get:
       operationId: getRawToken
       summary: Create raw LiveKit access token
+      security:
+        - TokenServerApiKey: []
       parameters:
         - in: query
           name: room
@@ -89,7 +105,24 @@ paths:
             text/plain:
               schema:
                 type: string
+        '401':
+          description: Unauthorized API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
+  securitySchemes:
+    TokenServerApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
   schemas:
     TokenResponse:
       type: object

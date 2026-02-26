@@ -25,6 +25,7 @@ All tools are declared in `DbAgent` with:
 Execution helpers:
 
 - `dbGet(path)` and `dbPost(path, body)` call `DB_API_BASE_URL`.
+- If `DB_API_AUTH_TOKEN` is set, worker sends `Authorization: Bearer <token>`.
 
 ## 2.1) Prefer SDK for external consumers
 

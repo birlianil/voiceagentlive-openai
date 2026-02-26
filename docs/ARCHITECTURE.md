@@ -13,23 +13,25 @@ Deliver a real-time VA-focused voice assistant over LiveKit that can:
 ```mermaid
 flowchart LR
   caller["Caller (LiveKit Meet)"] --> livekit["LiveKit Server (:7880)"]
-  token["Token Server (:3000)"] --> livekit
+  token["Token Server (:3000, API Key + Rate Limit)"] --> livekit
   livekit --> worker["Agent Worker (Node + LiveKit Agents)"]
   worker --> openai["OpenAI APIs (LLM/STT/TTS)"]
   worker --> stt["Local STT Service (:4020)"]
   worker --> tts["Local TTS Service (:4030)"]
-  worker --> db["Tool Backend API (:4010)"]
+  worker --> db["Tool Backend API (:4011, Bearer Auth)"]
+  db --> pg["Postgres (:5432)"]
+  db --> redis["Redis/BullMQ (:6379)"]
 ```
 
 ## Component map
 
 | Component | Responsibility | Code |
 | --- | --- | --- |
-| Token server | Issues JWT token, dispatches agent to room | `apps/token-server/src/index.ts` |
+| Token server | Issues JWT token, dispatches agent to room, enforces API key/rate limits | `apps/token-server/src/index.ts` |
 | LiveKit server | WebRTC signaling/media routing, worker dispatch | `docker-compose.yml` |
 | Agent worker | LLM orchestration, STT/TTS, tool invocation, session lifecycle | `apps/agent-worker/src/agent.ts` |
 | DB API mock | Tool endpoints for search/contact/appointments/calendar/retell actions | `apps/db-mock/src/index.ts` |
-| Tools API starter | Production-oriented backend baseline + webhook dispatch pattern | `apps/tools-api-starter/src/index.ts` |
+| Tools API starter | Production-oriented backend baseline with Postgres + BullMQ outbox + bearer auth | `apps/tools-api-starter/src/index.ts` |
 | Prompt | Behavioral policy and scope | `apps/agent-worker/prompt.md` |
 
 ## End-to-end runtime flow
@@ -41,7 +43,7 @@ flowchart LR
 5. Agent session starts, loads prompt, and starts VAD turn handling.
 6. User speech transcribes (OpenAI STT or local fallback).
 7. LLM generates response and optionally tool calls.
-8. Tool calls hit backend endpoints, outputs return to LLM.
+8. Tool calls hit backend endpoints with optional bearer auth, outputs return to LLM.
 9. Final text is synthesized to speech (OpenAI TTS or local fallback).
 10. Audio plays back to caller.
 

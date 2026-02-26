@@ -26,6 +26,8 @@ Set these in your RN app config:
 
 - `TOKEN_SERVER_BASE_URL` (example: `https://token.example.com`)
 - `LIVEKIT_WS_URL` (example: `wss://livekit.example.com`)
+- `TOKEN_SERVER_API_KEY` (if token endpoint API-key protected)
+- `TOOLS_API_BEARER_TOKEN` (if tools backend bearer-auth protected)
 
 ## Token fetch helper
 
@@ -34,6 +36,7 @@ import { TokenApiClient } from '@va-platform/voice-sdk';
 
 const tokenApi = new TokenApiClient({
   baseUrl: process.env.TOKEN_SERVER_BASE_URL!,
+  apiKey: process.env.TOKEN_SERVER_API_KEY,
 });
 
 export async function getVoiceToken(identity: string, room = 'va_voice_room') {
@@ -85,7 +88,10 @@ For sensitive actions, route through your own BFF/API.
 ```ts
 import { ToolsApiClient } from '@va-platform/voice-sdk';
 
-const tools = new ToolsApiClient({ baseUrl: process.env.TOOLS_API_BASE_URL! });
+const tools = new ToolsApiClient({
+  baseUrl: process.env.TOOLS_API_BASE_URL!,
+  bearerToken: process.env.TOOLS_API_BEARER_TOKEN,
+});
 const slots = await tools.checkAvailability({ preferredTimeOfDay: 'afternoon' });
 ```
 

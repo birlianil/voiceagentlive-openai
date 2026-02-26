@@ -1,0 +1,43 @@
+name: SDK Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      registry_url:
+        description: npm registry URL
+        required: false
+        default: https://npm.pkg.github.com
+
+jobs:
+  publish-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SDK
+        run: pnpm --filter @va-platform/voice-sdk build
+
+      - name: Publish SDK
+        working-directory: packages/va-platform-sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          REGISTRY_URL: ${{ github.event.inputs.registry_url || 'https://npm.pkg.github.com' }}
+        run: npm publish --registry "$REGISTRY_URL" --access restricted

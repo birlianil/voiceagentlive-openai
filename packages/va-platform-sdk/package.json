@@ -19,7 +19,9 @@
     "access": "restricted"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "pack": "npm pack",
+    "publish:private": "npm publish --access restricted"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

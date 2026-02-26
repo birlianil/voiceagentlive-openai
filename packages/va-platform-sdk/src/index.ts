@@ -20,6 +20,14 @@ export interface HttpClientOptions {
   defaultHeaders?: Record<string, string>;
 }
 
+export interface TokenApiClientOptions extends HttpClientOptions {
+  apiKey?: string;
+}
+
+export interface ToolsApiClientOptions extends HttpClientOptions {
+  bearerToken?: string;
+}
+
 export interface HealthResponse {
   ok: boolean;
 }
@@ -78,6 +86,7 @@ export interface RetellEventResponse {
   ok: boolean;
   id: string;
   status?: string;
+  queueStatus?: string;
   action?: string;
   digit?: string;
   ended?: boolean;
@@ -177,8 +186,16 @@ class HttpClient {
 export class TokenApiClient {
   private readonly http: HttpClient;
 
-  constructor(options: HttpClientOptions) {
-    this.http = new HttpClient(options);
+  constructor(options: TokenApiClientOptions) {
+    const defaultHeaders = {
+      ...(options.defaultHeaders || {}),
+      ...(options.apiKey ? { 'x-api-key': options.apiKey } : {}),
+    };
+    this.http = new HttpClient({
+      baseUrl: options.baseUrl,
+      fetchImpl: options.fetchImpl,
+      defaultHeaders,
+    });
   }
 
   health(): Promise<HealthResponse> {
@@ -227,8 +244,16 @@ export interface BookCalendarInput {
 export class ToolsApiClient {
   private readonly http: HttpClient;
 
-  constructor(options: HttpClientOptions) {
-    this.http = new HttpClient(options);
+  constructor(options: ToolsApiClientOptions) {
+    const defaultHeaders = {
+      ...(options.defaultHeaders || {}),
+      ...(options.bearerToken ? { authorization: `Bearer ${options.bearerToken}` } : {}),
+    };
+    this.http = new HttpClient({
+      baseUrl: options.baseUrl,
+      fetchImpl: options.fetchImpl,
+      defaultHeaders,
+    });
   }
 
   health(): Promise<HealthResponse> {
@@ -281,6 +306,10 @@ export interface VaVoicePlatformClientsConfig {
   toolsApiBaseUrl: string;
   fetchImpl?: FetchLike;
   defaultHeaders?: Record<string, string>;
+  tokenServerHeaders?: Record<string, string>;
+  toolsApiHeaders?: Record<string, string>;
+  tokenServerApiKey?: string;
+  toolsApiBearerToken?: string;
 }
 
 export function createVaVoicePlatformClients(config: VaVoicePlatformClientsConfig): {
@@ -291,12 +320,20 @@ export function createVaVoicePlatformClients(config: VaVoicePlatformClientsConfi
     tokenApi: new TokenApiClient({
       baseUrl: config.tokenServerBaseUrl,
       fetchImpl: config.fetchImpl,
-      defaultHeaders: config.defaultHeaders,
+      defaultHeaders: {
+        ...(config.defaultHeaders || {}),
+        ...(config.tokenServerHeaders || {}),
+      },
+      apiKey: config.tokenServerApiKey,
     }),
     toolsApi: new ToolsApiClient({
       baseUrl: config.toolsApiBaseUrl,
       fetchImpl: config.fetchImpl,
-      defaultHeaders: config.defaultHeaders,
+      defaultHeaders: {
+        ...(config.defaultHeaders || {}),
+        ...(config.toolsApiHeaders || {}),
+      },
+      bearerToken: config.toolsApiBearerToken,
     }),
   };
 }
