@@ -365,6 +365,42 @@ class DbAgent extends voice.Agent {
             reason: args.reason ? String(args.reason) : 'general',
           }),
       }),
+      check_availability_cal: llm.tool({
+        description:
+          'Check calendar slot availability for a date/date-range and preferred time of day.',
+        parameters: z.object({
+          dateFromISO: zLooseOptionalString,
+          dateToISO: zLooseOptionalString,
+          preferredTimeOfDay: zLooseOptionalString,
+        }),
+        execute: async ({ dateFromISO, dateToISO, preferredTimeOfDay }) =>
+          dbPost('/calendar/availability', {
+            dateFromISO: dateFromISO ? String(dateFromISO) : undefined,
+            dateToISO: dateToISO ? String(dateToISO) : undefined,
+            preferredTimeOfDay: preferredTimeOfDay ? String(preferredTimeOfDay) : 'any',
+          }),
+      }),
+      book_appointment_cal: llm.tool({
+        description:
+          'Book a calendar appointment after confirming appointment type, date/time, and clinic/facility.',
+        parameters: z.object({
+          datetimeISO: zLooseString,
+          appointmentType: zLooseOptionalString,
+          facility: zLooseOptionalString,
+          reason: zLooseOptionalString,
+          name: zLooseOptionalString,
+          email: zLooseOptionalEmail,
+        }),
+        execute: async ({ datetimeISO, appointmentType, facility, reason, name, email }) =>
+          dbPost('/calendar/book', {
+            datetimeISO: String(datetimeISO),
+            appointmentType: appointmentType ? String(appointmentType) : 'general',
+            facility: facility ? String(facility) : 'va-clinic',
+            reason: reason ? String(reason) : 'general',
+            name: name ? String(name) : undefined,
+            email: email ? String(email) : undefined,
+          }),
+      }),
       send_call_summary_email: llm.tool({
         description:
           'Send a short call-summary email when customer requested recap and email is available.',
