@@ -42,11 +42,18 @@ const MAX_SPOKEN_WORDS = Number(process.env.AGENT_MAX_SPOKEN_WORDS || 24);
 const VOICE_ALLOW_INTERRUPTIONS =
   (process.env.VOICE_ALLOW_INTERRUPTIONS || 'true').toLowerCase() === 'true';
 const VOICE_MIN_INTERRUPTION_DURATION_MS = Number(
-  process.env.VOICE_MIN_INTERRUPTION_DURATION_MS || 500,
+  process.env.VOICE_MIN_INTERRUPTION_DURATION_MS || (USE_OPENAI_STT ? 320 : 500),
 );
-const VOICE_MIN_INTERRUPTION_WORDS = Number(process.env.VOICE_MIN_INTERRUPTION_WORDS || 2);
-const VOICE_MIN_ENDPOINTING_DELAY_MS = Number(process.env.VOICE_MIN_ENDPOINTING_DELAY_MS || 500);
-const VOICE_MAX_ENDPOINTING_DELAY_MS = Number(process.env.VOICE_MAX_ENDPOINTING_DELAY_MS || 3000);
+const VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED = Number(
+  process.env.VOICE_MIN_INTERRUPTION_WORDS || (USE_OPENAI_STT ? 0 : 2),
+);
+const VOICE_MIN_INTERRUPTION_WORDS = USE_OPENAI_STT ? 0 : VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED;
+const VOICE_MIN_ENDPOINTING_DELAY_MS = Number(
+  process.env.VOICE_MIN_ENDPOINTING_DELAY_MS || (USE_OPENAI_STT ? 400 : 500),
+);
+const VOICE_MAX_ENDPOINTING_DELAY_MS = Number(
+  process.env.VOICE_MAX_ENDPOINTING_DELAY_MS || (USE_OPENAI_STT ? 2200 : 3000),
+);
 const VOICE_PREEMPTIVE_GENERATION =
   (process.env.VOICE_PREEMPTIVE_GENERATION || 'false').toLowerCase() === 'true';
 const STT_SILENCE_FLUSH_MS = Number(process.env.STT_SILENCE_FLUSH_MS || 520);
@@ -642,6 +649,15 @@ export default defineAgent({
     console.log(
       `[agent:start] llm=${OPENAI_MODEL} stt=${ACTIVE_STT_LABEL} tts=${ACTIVE_TTS_LABEL} tools=${ENABLE_TOOLS}`,
     );
+    console.log(
+      `[agent:voice] allowInterruptions=${VOICE_ALLOW_INTERRUPTIONS} minInterruptionMs=${VOICE_MIN_INTERRUPTION_DURATION_MS} minInterruptionWords=${VOICE_MIN_INTERRUPTION_WORDS} endpointingMs=${VOICE_MIN_ENDPOINTING_DELAY_MS}-${VOICE_MAX_ENDPOINTING_DELAY_MS}`,
+    );
+
+    if (USE_OPENAI_STT && VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED > 0) {
+      console.warn(
+        `[agent:voice:warn] OpenAI STT mode forces minInterruptionWords=0 for fast barge-in (configured=${VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED}).`,
+      );
+    }
 
     const vad = ctx.proc.userData.vad as silero.VAD | undefined;
 

@@ -124,6 +124,11 @@ Then set in `.env`:
 - `DB_API_BASE_URL=http://127.0.0.1:4011`
 - `DB_API_AUTH_TOKEN=<TOOLS_API_AUTH_TOKEN>` if `TOOLS_API_REQUIRE_AUTH=true`
 
+For faster barge-in when caller speaks over assistant (OpenAI STT path), keep:
+
+- `VOICE_ALLOW_INTERRUPTIONS=true`
+- `VOICE_MIN_INTERRUPTION_WORDS=0`
+
 ## 5) Get token
 
 ```text

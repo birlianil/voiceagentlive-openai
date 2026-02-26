@@ -17,27 +17,33 @@ Values are applied in both:
 
 | Setting | Previous | Current | Reason |
 | --- | --- | --- | --- |
-| `VOICE_MIN_INTERRUPTION_DURATION_MS` | `280` | `500` | Requires longer user speech before interrupt. |
-| `VOICE_MIN_INTERRUPTION_WORDS` | `1` | `2` | Reduces one-word accidental interrupts. |
+| `VOICE_MIN_INTERRUPTION_DURATION_MS` | `280` | `320` | Preserves fast barge-in while filtering ultra-short noise. |
+| `VOICE_MIN_INTERRUPTION_WORDS` | `1` | `0` | For OpenAI STT path, avoid waiting on delayed final transcripts. |
 | `VOICE_MIN_ENDPOINTING_DELAY_MS` | `200` | `500` | Avoids early turn-close on brief pauses. |
-| `VOICE_MAX_ENDPOINTING_DELAY_MS` | `900` | `3000` | Aligns with safer upper window for turn finalization. |
+| `VOICE_MAX_ENDPOINTING_DELAY_MS` | `900` | `2200` | Keeps turn finalization responsive without over-waiting. |
 
 ## Practical effect
 
-- Fewer false barge-ins.
-- More complete assistant utterances.
-- Lower chance of TTS request cancellation cascades.
+- Faster interruption when caller starts speaking over assistant.
+- Lower chance that assistant keeps talking while user barge-ins.
+- Balanced against moderate false-interrupt protection.
 
 ## When to tune further
 
 If users report the assistant "cuts in too easily":
 
 - Increase `VOICE_MIN_INTERRUPTION_DURATION_MS` first.
-- Then increase `VOICE_MIN_INTERRUPTION_WORDS`.
+- Keep `VOICE_MIN_INTERRUPTION_WORDS=0` for OpenAI STT unless you accept slower barge-in.
 
 If users report "assistant replies too slowly":
 
 - Lower `VOICE_MIN_ENDPOINTING_DELAY_MS` in small steps (e.g., 500 -> 400).
+
+If users report "assistant keeps speaking while I talk":
+
+- Set `VOICE_MIN_INTERRUPTION_WORDS=0` (critical on OpenAI STT path).
+- Keep `VOICE_ALLOW_INTERRUPTIONS=true`.
+- Lower `VOICE_MIN_INTERRUPTION_DURATION_MS` in small steps (e.g., 320 -> 260).
 
 If long pauses are misread as turn end:
 
