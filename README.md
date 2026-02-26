@@ -14,11 +14,20 @@ This branch runs the assistant with:
 
 - `docker-compose.yml`
 - `.env.example`
+- `docs/`
 - `apps/agent-worker`
 - `apps/token-server`
 - `apps/db-mock`
 - `apps/stt-svc`
 - `apps/tts-svc`
+
+## Documentation
+
+- Developer index: `docs/README.md`
+- Architecture + diagrams: `docs/ARCHITECTURE.md`
+- Tuning profile and rationale: `docs/TUNING.md`
+- Prompt/tool integration guide: `docs/INTEGRATION_GUIDE.md`
+- Short shareable summary: `docs/SUMMARY_SHORT.md`
 
 ## 1) Environment
 
@@ -95,6 +104,12 @@ http://127.0.0.1:3000/token?room=test_room&identity=anil
 - `GET /search?q=...`
 - `POST /contact`
 - `POST /appointments`
+- `POST /calendar/availability`
+- `POST /calendar/book`
+- `POST /retell/send_call_summary_email`
+- `POST /retell/transfer_call`
+- `POST /retell/press_digit_medrics`
+- `POST /retell/end_call`
 
 Base URL: `DB_API_BASE_URL`
 
