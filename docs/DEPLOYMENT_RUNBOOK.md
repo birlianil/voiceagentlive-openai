@@ -40,6 +40,17 @@ npx pnpm@10.15.0 install
 npx pnpm@10.15.0 dev
 ```
 
+Optional local fallback audio services:
+
+```bash
+docker compose --profile local-audio up -d stt-svc tts-svc
+```
+
+Use local fallback only when needed:
+
+- `USE_OPENAI_STT=false` to use `stt-svc`
+- `USE_OPENAI_TTS=false` to use `tts-svc`
+
 Validate:
 
 - `GET http://127.0.0.1:3000/health`

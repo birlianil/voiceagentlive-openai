@@ -76,6 +76,7 @@ services:
 
   stt-svc:
     build: ./apps/stt-svc
+    profiles: ["local-audio"]
     environment:
       - PORT=4020
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
@@ -87,6 +88,7 @@ services:
 
   tts-svc:
     build: ./apps/tts-svc
+    profiles: ["local-audio"]
     environment:
       - PORT=4030
       - PIPER_MODEL=${PIPER_MODEL:-en_US-amy-medium}

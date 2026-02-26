@@ -67,6 +67,13 @@ docker compose up -d --build
 ```
 
 Note: `ollama` service is optional and disabled by default profile in this branch.
+By default this starts the OpenAI STT/TTS path (no local STT/TTS containers).
+
+Optional local STT/TTS fallback services (only if `USE_OPENAI_STT=false` and/or `USE_OPENAI_TTS=false`):
+
+```bash
+docker compose --profile local-audio up -d stt-svc tts-svc
+```
 
 Optional production-oriented backend starter (includes Postgres + Redis):
 

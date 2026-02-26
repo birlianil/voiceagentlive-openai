@@ -32,6 +32,7 @@ flowchart LR
 | Agent worker | LLM orchestration, STT/TTS, tool invocation, session lifecycle | `apps/agent-worker/src/agent.ts` |
 | DB API mock | Tool endpoints for search/contact/appointments/calendar/retell actions | `apps/db-mock/src/index.ts` |
 | Tools API starter | Production-oriented backend baseline with Postgres + BullMQ outbox + bearer auth | `apps/tools-api-starter/src/index.ts` |
+| stt-svc / tts-svc | Optional local fallback STT/TTS services (`local-audio` profile) | `apps/stt-svc`, `apps/tts-svc` |
 | Prompt | Behavioral policy and scope | `apps/agent-worker/prompt.md` |
 
 ## End-to-end runtime flow
