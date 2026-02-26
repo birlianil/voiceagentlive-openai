@@ -93,19 +93,25 @@ function extractStringLike(value: unknown): string | undefined {
   return undefined;
 }
 
+function isTemplatePlaceholder(value: string): boolean {
+  return /\{\{\s*[^}]+\s*\}\}/.test(value);
+}
+
 const zLooseString = z.preprocess((value) => extractStringLike(value) ?? value, z.string().min(1));
 const zLooseEmail = z.preprocess((value) => extractStringLike(value) ?? value, z.string().email());
 const zLooseOptionalString = z.preprocess(
   (value) => {
     const s = extractStringLike(value);
-    return s && s.length > 0 ? s : undefined;
+    if (!s || s.length === 0 || isTemplatePlaceholder(s)) return undefined;
+    return s;
   },
   z.string().min(1).optional(),
 );
 const zLooseOptionalEmail = z.preprocess(
   (value) => {
     const s = extractStringLike(value);
-    return s && s.length > 0 ? s : undefined;
+    if (!s || s.length === 0 || isTemplatePlaceholder(s)) return undefined;
+    return s;
   },
   z.string().email().optional(),
 );
@@ -343,11 +349,19 @@ class DbAgent extends voice.Agent {
       save_contact: llm.tool({
         description: 'Save confirmed user contact info (name + email) into backend',
         parameters: z.object({
-          name: zLooseString,
-          email: zLooseEmail,
+          name: zLooseOptionalString,
+          email: zLooseOptionalEmail,
         }),
-        execute: async ({ name, email }) =>
-          dbPost('/contact', { name: String(name), email: String(email) }),
+        execute: async ({ name, email }) => {
+          if (!name || !email) {
+            return {
+              ok: false,
+              skipped: true,
+              reason: 'missing_or_invalid_contact_data',
+            };
+          }
+          return dbPost('/contact', { name: String(name), email: String(email) });
+        },
       }),
       create_appointment: llm.tool({
         description: 'Create appointment. Collect confirmed name, email, datetimeISO, and reason.',
