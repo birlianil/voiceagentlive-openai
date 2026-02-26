@@ -1,15 +1,22 @@
 {
   "name": "@va-platform/voice-sdk",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "restricted"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

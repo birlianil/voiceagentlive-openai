@@ -11,7 +11,7 @@ If you want separate GitHub repositories for different teams, use this plan.
 - core docs
 
 2. `va-voice-tools-api`
-- production replacement of `apps/db-mock`
+- production replacement of `apps/tools-api-starter`
 - OpenAPI contracts
 
 3. `va-voice-sdk-js`
@@ -49,6 +49,13 @@ git push git@github.com:<ORG>/va-voice-runtime.git split/agent:main
 ```bash
 git subtree split --prefix=apps/token-server -b split/token
 git push git@github.com:<ORG>/va-voice-token-server.git split/token:main
+```
+
+### Tools API starter repo
+
+```bash
+git subtree split --prefix=apps/tools-api-starter -b split/tools-starter
+git push git@github.com:<ORG>/va-voice-tools-api.git split/tools-starter:main
 ```
 
 ## Keep contracts synchronized

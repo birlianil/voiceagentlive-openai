@@ -7,7 +7,8 @@
 | LiveKit | Yes | 7880/7881/7882 | Realtime media/signaling |
 | token-server | Yes | 3000 | JWT + agent dispatch |
 | agent-worker | Yes | dynamic worker process | Connects to LiveKit + OpenAI + tools API |
-| tool backend API | Yes | 4010 | Replace `db-mock` in production |
+| tool backend API (mock) | Optional | 4010 | `db-mock` for local development |
+| tool backend API (starter) | Recommended | 4011 | `tools-api-starter` for production implementation baseline |
 | stt-svc | Optional | 4020 | Needed when `USE_OPENAI_STT=false` |
 | tts-svc | Optional | 4030 | Needed when `USE_OPENAI_TTS=false` |
 
@@ -35,6 +36,24 @@ Validate:
 - `GET http://127.0.0.1:3000/health`
 - `GET http://127.0.0.1:4010/health`
 - `GET http://127.0.0.1:3000/token?room=test_room&identity=ops`
+
+To run production-oriented starter backend instead of `db-mock`:
+
+```bash
+docker compose --profile tools up -d tools-api-starter
+```
+
+Then set:
+
+```env
+DB_API_BASE_URL=http://127.0.0.1:4011
+```
+
+Or run node services together:
+
+```bash
+npx pnpm@10.15.0 dev:with-tools-starter
+```
 
 ## Production topology recommendation
 

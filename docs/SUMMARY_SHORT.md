@@ -9,6 +9,7 @@ This repo now also includes a distribution-ready developer kit:
 - JS/TS SDK: `packages/va-platform-sdk`
 - OpenAPI contracts: `openapi/`
 - Team-specific integration/runbook docs: `docs/`
+- Backend starter service: `apps/tools-api-starter`
 
 ## Core runtime path
 

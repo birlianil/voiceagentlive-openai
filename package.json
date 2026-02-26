@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "pnpm --parallel --filter token-server --filter agent-worker dev",
+    "dev:with-tools-starter": "pnpm --parallel --filter token-server --filter agent-worker --filter tools-api-starter dev",
     "dev:all": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "build:sdk": "pnpm --filter @va-platform/voice-sdk build",

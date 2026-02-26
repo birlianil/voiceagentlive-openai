@@ -6,6 +6,7 @@
 - Tools API: `openapi/tool-backend.yaml`
 
 These OpenAPI files are the canonical interface documents for client/server integration.
+`apps/tools-api-starter` is the reference implementation baseline for these contracts.
 
 ## Versioning strategy
 

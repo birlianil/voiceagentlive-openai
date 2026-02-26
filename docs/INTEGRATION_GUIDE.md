@@ -50,7 +50,7 @@ external_lookup: llm.tool({
 
 ### Step B: implement backend endpoint
 
-Add endpoint in your backend service (or replace `db-mock` implementation):
+Add endpoint in your backend service (or replace `db-mock` / `tools-api-starter` implementation):
 
 ```ts
 app.post('/external/crm/lookup', async (req, res) => {

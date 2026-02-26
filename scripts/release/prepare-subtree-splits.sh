@@ -12,8 +12,9 @@ git subtree split --prefix=packages/va-platform-sdk -b split/sdk || true
 git subtree split --prefix=apps/agent-worker -b split/agent-worker || true
 git subtree split --prefix=apps/token-server -b split/token-server || true
 git subtree split --prefix=apps/db-mock -b split/tools-api-mock || true
+git subtree split --prefix=apps/tools-api-starter -b split/tools-api-starter || true
 
-echo "Created/updated branches: split/sdk, split/agent-worker, split/token-server, split/tools-api-mock"
+echo "Created/updated branches: split/sdk, split/agent-worker, split/token-server, split/tools-api-mock, split/tools-api-starter"
 echo "Example push: git push git@github.com:<ORG>/va-voice-sdk-js.git split/sdk:main"
 
 popd >/dev/null

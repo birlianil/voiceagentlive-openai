@@ -29,6 +29,7 @@ flowchart LR
 | LiveKit server | WebRTC signaling/media routing, worker dispatch | `docker-compose.yml` |
 | Agent worker | LLM orchestration, STT/TTS, tool invocation, session lifecycle | `apps/agent-worker/src/agent.ts` |
 | DB API mock | Tool endpoints for search/contact/appointments/calendar/retell actions | `apps/db-mock/src/index.ts` |
+| Tools API starter | Production-oriented backend baseline + webhook dispatch pattern | `apps/tools-api-starter/src/index.ts` |
 | Prompt | Behavioral policy and scope | `apps/agent-worker/prompt.md` |
 
 ## End-to-end runtime flow

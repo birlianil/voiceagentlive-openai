@@ -33,6 +33,7 @@ mkdir -p "$OUT_DIR/apps"
 copy_tree "apps/agent-worker" "$OUT_DIR/apps/agent-worker"
 copy_tree "apps/token-server" "$OUT_DIR/apps/token-server"
 copy_tree "apps/db-mock" "$OUT_DIR/apps/db-mock"
+copy_tree "apps/tools-api-starter" "$OUT_DIR/apps/tools-api-starter"
 
 cat > "$OUT_DIR/CONTENTS.md" <<'CONTENTS'
 # Developer Kit Contents
@@ -40,7 +41,7 @@ cat > "$OUT_DIR/CONTENTS.md" <<'CONTENTS'
 - docs/: architecture, integration, deployment, and runbooks
 - openapi/: token server and tool backend OpenAPI contracts
 - sdk/va-platform-sdk/: TS SDK package for token/tools APIs
-- apps/: runtime services to deploy (agent-worker, token-server, db-mock)
+- apps/: runtime services to deploy (agent-worker, token-server, db-mock, tools-api-starter)
 - .env.example: baseline environment variables
 CONTENTS
 

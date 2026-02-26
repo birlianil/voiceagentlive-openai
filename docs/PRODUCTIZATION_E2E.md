@@ -15,6 +15,7 @@ This repository is now structured as a deployable platform bundle for:
   - `apps/agent-worker`
   - `apps/token-server`
   - `apps/db-mock` (replaceable with real backend)
+  - `apps/tools-api-starter` (production-oriented backend starting point)
 - Platform SDK:
   - `packages/va-platform-sdk`
 - API contracts:
@@ -77,7 +78,7 @@ Without LiveKit server, realtime room connection cannot run.
 | --- | --- | --- |
 | React Native | Token fetch + room connection | `docs/CLIENT_REACT_NATIVE.md` |
 | iOS/Android native | Token fetch + platform SDK setup | `docs/CLIENT_NATIVE.md` |
-| Backend | Tool endpoint contracts | `openapi/tool-backend.yaml` |
+| Backend | Tool endpoint contracts + implementation guide | `openapi/tool-backend.yaml`, `docs/BACKEND_IMPLEMENTATION_GUIDE.md` |
 | DevOps | Ports, env, readiness, scaling | `docs/DEPLOYMENT_RUNBOOK.md` |
 | Platform | SDK distribution | `packages/va-platform-sdk` |
 

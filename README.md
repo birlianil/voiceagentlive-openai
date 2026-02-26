@@ -18,6 +18,7 @@ This branch runs the assistant with:
 - `apps/agent-worker`
 - `apps/token-server`
 - `apps/db-mock`
+- `apps/tools-api-starter`
 - `apps/stt-svc`
 - `apps/tts-svc`
 - `packages/va-platform-sdk`
@@ -31,6 +32,7 @@ This branch runs the assistant with:
 - Productization blueprint: `docs/PRODUCTIZATION_E2E.md`
 - Deployment runbook: `docs/DEPLOYMENT_RUNBOOK.md`
 - Tuning profile and rationale: `docs/TUNING.md`
+- Backend implementation guide: `docs/BACKEND_IMPLEMENTATION_GUIDE.md`
 - Prompt/tool integration guide: `docs/INTEGRATION_GUIDE.md`
 - API contracts and webhooks: `docs/API_CONTRACTS.md`
 - React Native integration: `docs/CLIENT_REACT_NATIVE.md`
@@ -65,6 +67,12 @@ docker compose up -d --build
 
 Note: `ollama` service is optional and disabled by default profile in this branch.
 
+Optional production-oriented backend starter:
+
+```bash
+docker compose --profile tools up -d tools-api-starter
+```
+
 If you still want ollama for experiments:
 
 ```bash
@@ -97,6 +105,14 @@ or
 npx pnpm@10.15.0 dev
 ```
 
+If you want to run the production-oriented tool backend starter in the same terminal flow:
+
+```bash
+pnpm dev:with-tools-starter
+```
+
+Then set `DB_API_BASE_URL=http://127.0.0.1:4011` in `.env`.
+
 ## 5) Get token
 
 ```text
@@ -122,6 +138,8 @@ http://127.0.0.1:3000/token?room=test_room&identity=anil
 - `POST /retell/end_call`
 
 Base URL: `DB_API_BASE_URL`
+
+Production-oriented backend starter default URL: `http://127.0.0.1:4011`
 
 ## SDK and API contracts
 

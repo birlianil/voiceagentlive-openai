@@ -23,6 +23,17 @@ services:
     ports:
       - "4010:4010"
 
+  tools-api-starter:
+    build: ./apps/tools-api-starter
+    profiles: ["tools"]
+    environment:
+      - PORT=${TOOLS_API_STARTER_PORT:-4011}
+      - TOOLS_WEBHOOK_URL=${TOOLS_WEBHOOK_URL:-}
+      - TOOLS_WEBHOOK_SECRET=${TOOLS_WEBHOOK_SECRET:-}
+      - TOOLS_WEBHOOK_TIMEOUT_MS=${TOOLS_WEBHOOK_TIMEOUT_MS:-4000}
+    ports:
+      - "${TOOLS_API_STARTER_PORT:-4011}:4011"
+
   stt-svc:
     build: ./apps/stt-svc
     environment:
