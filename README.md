@@ -7,7 +7,7 @@ This branch runs the assistant with:
 - OpenAI cloud LLM (`gpt-4o-mini` by default)
 - Local STT service (faster-whisper)
 - Local TTS service (Piper)
-- Tool/API backend (`db-mock`) for search/contact/appointment actions
+- Tool/API backend (`db-mock` dev default or `tools-api-starter` production baseline)
 - Token server for browser joins + agent dispatch
 
 ## Project layout

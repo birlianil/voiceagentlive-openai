@@ -18,7 +18,7 @@ flowchart LR
   worker --> openai["OpenAI APIs (LLM/STT/TTS)"]
   worker --> stt["Local STT Service (:4020)"]
   worker --> tts["Local TTS Service (:4030)"]
-  worker --> db["Tool Backend API (:4011, Bearer Auth)"]
+  worker --> db["Tool Backend API (:4010 dev / :4011 starter)"]
   db --> pg["Postgres (:5432)"]
   db --> redis["Redis/BullMQ (:6379)"]
 ```

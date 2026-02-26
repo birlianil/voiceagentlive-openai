@@ -26,6 +26,7 @@ paths:
       summary: Create LiveKit access token
       security:
         - TokenServerApiKey: []
+        - {}
       parameters:
         - in: query
           name: room
@@ -76,6 +77,7 @@ paths:
       summary: Create raw LiveKit access token
       security:
         - TokenServerApiKey: []
+        - {}
       parameters:
         - in: query
           name: room

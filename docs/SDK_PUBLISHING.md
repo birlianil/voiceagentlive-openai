@@ -10,6 +10,11 @@
 1. GitHub Packages (`https://npm.pkg.github.com`)
 2. Private npm-compatible registry (Verdaccio / Artifactory / Nexus)
 
+Important for GitHub Packages:
+
+- npm scope must match repository owner/org (for example `@your-org/package`).
+- Current package is `@va-platform/voice-sdk`; if owner scope differs, use another private registry or rename the package scope.
+
 ## Local publish (manual)
 
 1. Build SDK:

@@ -58,6 +58,9 @@ const tokenLimiter = rateLimit({
   max: TOKEN_SERVER_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: 'rate limit exceeded' });
+  },
 });
 
 function requireApiKey(req: Request, res: Response, next: NextFunction): Response | void {

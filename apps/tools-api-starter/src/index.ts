@@ -46,6 +46,18 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`;
 }
 
+function asErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+
+function withAsync(handler: AsyncRouteHandler) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    void handler(req, res, next).catch(next);
+  };
+}
+
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const db = new StarterDb(config.databaseUrl);
@@ -263,35 +275,42 @@ async function bootstrap(): Promise<void> {
     return { id: eventId, status: 'queued' };
   }
 
-  app.post('/retell/send_call_summary_email', async (req: Request, res: Response) => {
+  app.post('/retell/send_call_summary_email', withAsync(async (req: Request, res: Response) => {
     const payload = (req.body || {}) as Record<string, unknown>;
     const event = await enqueueRetellEvent('send_call_summary_email', payload);
     res.json({ ok: true, id: event.id, status: event.status });
-  });
+  }));
 
-  app.post('/retell/transfer_call', async (req: Request, res: Response) => {
+  app.post('/retell/transfer_call', withAsync(async (req: Request, res: Response) => {
     const payload = (req.body || {}) as Record<string, unknown>;
     const event = await enqueueRetellEvent('transfer_call', payload);
     res.json({ ok: true, id: event.id, status: 'transferred', queueStatus: event.status });
-  });
+  }));
 
-  app.post('/retell/press_digit_medrics', async (req: Request, res: Response) => {
+  app.post('/retell/press_digit_medrics', withAsync(async (req: Request, res: Response) => {
     const payload = (req.body || {}) as Record<string, unknown>;
     const event = await enqueueRetellEvent('press_digit_medrics', payload);
     res.json({ ok: true, id: event.id, digit: '5', queueStatus: event.status });
-  });
+  }));
 
-  app.post('/retell/end_call', async (req: Request, res: Response) => {
+  app.post('/retell/end_call', withAsync(async (req: Request, res: Response) => {
     const payload = (req.body || {}) as Record<string, unknown>;
     const event = await enqueueRetellEvent('end_call', payload);
     res.json({ ok: true, id: event.id, ended: true, queueStatus: event.status });
-  });
+  }));
 
-  app.get('/internal/events', async (req: Request, res: Response) => {
+  app.get('/internal/events', withAsync(async (req: Request, res: Response) => {
     const limitRaw = asString(req.query.limit);
     const limit = Number(limitRaw || 100);
     const events = await db.listRecentEvents(limit);
     res.json({ ok: true, count: events.length, events });
+  }));
+
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    const message = asErrorMessage(err);
+    console.error(`[request:error] ${req.method} ${req.path} ${message}`);
+    if (res.headersSent) return;
+    res.status(500).json({ ok: false, error: 'internal error' });
   });
 
   const server = app.listen(config.port, () => {

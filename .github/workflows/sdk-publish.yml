@@ -35,6 +35,19 @@ jobs:
       - name: Build SDK
         run: pnpm --filter @va-platform/voice-sdk build
 
+      - name: Validate GitHub Packages scope
+        if: ${{ (github.event.inputs.registry_url || 'https://npm.pkg.github.com') == 'https://npm.pkg.github.com' }}
+        run: |
+          PACKAGE_NAME=$(node -p "require('./packages/va-platform-sdk/package.json').name")
+          PACKAGE_SCOPE=$(echo "$PACKAGE_NAME" | cut -d'/' -f1 | tr -d '@' | tr '[:upper:]' '[:lower:]')
+          OWNER_SCOPE=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          if [ "$PACKAGE_SCOPE" != "$OWNER_SCOPE" ]; then
+            echo "Package scope @$PACKAGE_SCOPE must match GitHub owner @$OWNER_SCOPE for npm.pkg.github.com publishing."
+            echo "Use another registry URL or rename package scope."
+            exit 1
+          fi
+
       - name: Publish SDK
         working-directory: packages/va-platform-sdk
         env:
