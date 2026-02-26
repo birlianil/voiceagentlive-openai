@@ -39,6 +39,7 @@ This branch runs the assistant with:
 - Native iOS/Android integration: `docs/CLIENT_NATIVE.md`
 - SDK publishing guide: `docs/SDK_PUBLISHING.md`
 - Optional multi-repo split: `docs/REPO_SPLIT.md`
+- Current split repo links: `docs/SPLIT_REPOS_INDEX.md`
 - Short shareable summary: `docs/SUMMARY_SHORT.md`
 
 ## 1) Environment

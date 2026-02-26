@@ -25,6 +25,7 @@ cp -R docs "$OUT_DIR/docs"
 cp -R openapi "$OUT_DIR/openapi"
 cp README.md "$OUT_DIR/README.md"
 cp .env.example "$OUT_DIR/.env.example"
+copy_tree "scripts/release" "$OUT_DIR/scripts/release"
 
 mkdir -p "$OUT_DIR/sdk"
 copy_tree "packages/va-platform-sdk" "$OUT_DIR/sdk/va-platform-sdk"
@@ -42,6 +43,7 @@ cat > "$OUT_DIR/CONTENTS.md" <<'CONTENTS'
 - openapi/: token server and tool backend OpenAPI contracts
 - sdk/va-platform-sdk/: TS SDK package for token/tools APIs
 - apps/: runtime services to deploy (agent-worker, token-server, db-mock, tools-api-starter)
+- scripts/release/: packaging + repo split automation scripts
 - .env.example: baseline environment variables
 CONTENTS
 

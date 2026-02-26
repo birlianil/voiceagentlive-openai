@@ -2,6 +2,10 @@
 
 If you want separate GitHub repositories for different teams, use this plan.
 
+Current concrete split (already created) is tracked in:
+
+- `docs/SPLIT_REPOS_INDEX.md`
+
 ## Suggested target repos
 
 1. `va-voice-runtime`
@@ -29,6 +33,16 @@ bash scripts/release/prepare-subtree-splits.sh
 ```
 
 Then push created `split/*` branches to target repositories.
+
+Automated push/create script:
+
+```bash
+bash scripts/release/push-split-repos.sh
+```
+
+Mapping file:
+
+- `scripts/release/split-repos.map`
 
 ### SDK repo
 

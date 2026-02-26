@@ -16,6 +16,7 @@ This folder is the handoff package for developers who need to understand, operat
 10. `API_CONTRACTS.md` for OpenAPI contracts and webhook patterns.
 11. `SDK_PUBLISHING.md` for private registry publishing.
 12. `REPO_SPLIT.md` for optional multi-repo release strategy.
+13. `SPLIT_REPOS_INDEX.md` for current split repo links and sync commands.
 
 ## Source of truth in code
 
