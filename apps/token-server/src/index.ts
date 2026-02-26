@@ -1,8 +1,14 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import cors from 'cors';
 import express from 'express';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(currentDir, '../../../.env') });
+dotenv.config();
 
 const app = express();
 app.use(cors());

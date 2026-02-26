@@ -1,10 +1,12 @@
-import 'dotenv/config';
-
 import { cli, WorkerOptions } from '@livekit/agents';
+import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const serverFile = fileURLToPath(import.meta.url);
+dotenv.config({ path: path.resolve(path.dirname(serverFile), '../../../.env') });
+dotenv.config();
+
 const ext = path.extname(serverFile);
 const agentFile = path.join(path.dirname(serverFile), ext === '.ts' ? 'agent.ts' : 'agent.js');
 
