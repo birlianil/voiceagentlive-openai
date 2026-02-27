@@ -10,11 +10,9 @@ Integrate a React Native app with the VA voice platform using:
 ## Dependencies
 
 ```bash
-npm install @livekit/react-native @livekit/react-native-webrtc
+npm install @livekit/react-native @livekit/react-native-webrtc livekit-client
 npm install @va-platform/voice-sdk
 ```
-
-Do not import anything directly from `livekit-client` in React Native screens unless you explicitly need it.
 
 If consuming from this monorepo workspace:
 
@@ -50,7 +48,8 @@ export async function getVoiceToken(identity: string, room = 'va_voice_room') {
 
 ```tsx
 import React, { useEffect, useState } from 'react';
-import { LiveKitRoom, registerGlobals } from '@livekit/react-native';
+import { LiveKitRoom } from '@livekit/react-native';
+import { registerGlobals } from '@livekit/react-native-webrtc';
 import { getVoiceToken } from './token';
 
 registerGlobals();
@@ -80,26 +79,6 @@ export function VoiceRoomScreen() {
   );
 }
 ```
-
-## Troubleshooting (Rork / Expo / Metro)
-
-If you see:
-
-- `Requiring unknown module "xxxx"`
-- `Detected multiple renderers concurrently rendering the same context provider`
-
-check these first:
-
-1. Use `registerGlobals` from `@livekit/react-native` (not from `@livekit/react-native-webrtc`).
-2. Ensure there is only one `LiveKitRoom` provider in the active screen tree.
-3. Do not mix web LiveKit components (`@livekit/components-react`) with RN LiveKit components in the same app tree.
-4. Clear Metro cache and restart the app:
-
-```bash
-npx expo start -c
-```
-
-5. If using Expo, use a development build (not Expo Go) for WebRTC-based functionality.
 
 ## Optional: tools API usage from app
 
