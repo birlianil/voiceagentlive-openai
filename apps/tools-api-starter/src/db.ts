@@ -67,6 +67,100 @@ export interface KbDocumentSummary {
   sectionCount: number;
 }
 
+const GENERIC_SEARCH_TOKENS = new Set([
+  'address',
+  'phone',
+  'hours',
+  'hour',
+  'contact',
+  'location',
+  'facility',
+  'facilities',
+  'medical',
+  'center',
+  'clinic',
+  'hospital',
+  'veterans',
+  'veteran',
+  'department',
+  'affairs',
+  'nearest',
+  'closest',
+  'main',
+  'number',
+  'services',
+  'service',
+]);
+
+function tokenizeSearchQuery(query: string): string[] {
+  const allTokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 3)
+    .slice(0, 20);
+
+  const focusedTokens = allTokens.filter((x) => !GENERIC_SEARCH_TOKENS.has(x));
+  const selected = focusedTokens.length > 0 ? focusedTokens : allTokens;
+  return selected.slice(0, 16);
+}
+
+function countTokenHits(text: string, tokens: string[]): number {
+  if (!text || tokens.length === 0) return 0;
+  let hitCount = 0;
+  for (const token of tokens) {
+    if (text.includes(token)) hitCount += 1;
+  }
+  return hitCount;
+}
+
+function computeLexicalFallbackRank(
+  normalizedQuery: string,
+  tokens: string[],
+  title: string,
+  content: string,
+): number {
+  const queryLower = normalizedQuery.toLowerCase();
+  const titleLower = title.toLowerCase();
+  const contentLower = content.toLowerCase().slice(0, 1800);
+
+  const exactTitleMatch = titleLower === queryLower ? 1 : 0;
+  const titleContainsQuery = titleLower.includes(queryLower) ? 1 : 0;
+  const titleTokenHits = countTokenHits(titleLower, tokens);
+  const contentTokenHits = countTokenHits(contentLower, tokens);
+  const containsVetCenter = titleLower.includes('vet center') || contentLower.includes('vet center');
+  const containsMedicalCenter =
+    titleLower.includes('medical center') || contentLower.includes('medical center');
+  const queryWantsVetCenter = queryLower.includes('vet center');
+  const queryWantsMedicalCenter = queryLower.includes('medical center');
+  const tokenCoverage =
+    tokens.length > 0
+      ? Math.min(1, (titleTokenHits + contentTokenHits * 0.25) / tokens.length)
+      : 0;
+
+  const phraseBoost =
+    (queryWantsVetCenter && containsVetCenter ? 1 : 0) +
+    (queryWantsMedicalCenter && containsMedicalCenter ? 0.8 : 0);
+  const phrasePenalty = queryWantsVetCenter && !containsVetCenter ? 0.8 : 0;
+
+  const rawScore =
+    exactTitleMatch * 3.5 +
+    titleContainsQuery * 2.5 +
+    titleTokenHits * 0.45 +
+    contentTokenHits * 0.12 +
+    tokenCoverage +
+    phraseBoost -
+    phrasePenalty;
+
+  return 0.0001 + Math.min(3, rawScore);
+}
+
+function isFacilitySearchIntent(query: string): boolean {
+  return /\b(facility|medical center|clinic|hospital|vet center|address|phone|hours|contact|location|nearest|closest|downtown|uptown|campus)\b/i.test(
+    query,
+  );
+}
+
 export class StarterDb {
   private readonly pool: Pool;
 
@@ -374,8 +468,15 @@ export class StarterDb {
     if (!normalizedQuery) return [];
 
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 40;
+    const tokens = tokenizeSearchQuery(normalizedQuery);
+    const focusedQuery = tokens.join(' ').trim();
+    const isFacilityIntent = isFacilitySearchIntent(normalizedQuery);
+    const expandedLimit = isFacilityIntent
+      ? Math.min(500, Math.max(safeLimit * 2, 24))
+      : Math.max(safeLimit, Math.min(500, safeLimit * 2));
+    const ftsQuery = isFacilityIntent && focusedQuery ? focusedQuery : normalizedQuery;
 
-    const ftsResult = await this.pool.query(
+    const primaryFtsResult = await this.pool.query(
       `
         SELECT
           s.id AS section_id,
@@ -391,15 +492,117 @@ export class StarterDb {
         INNER JOIN kb_documents d ON d.id = s.document_id
         WHERE to_tsvector('simple', s.content) @@ plainto_tsquery('simple', $1)
           AND ($2::TEXT IS NULL OR d.source = $2)
+          AND (
+            $4::BOOLEAN = FALSE
+            OR LOWER(d.title) LIKE 'facilities_va.fixed.part_%'
+            OR LOWER(d.title) LIKE 'augusta va questions-answers%'
+            OR LOWER(d.title) LIKE 'va_poi_knowledge_base%'
+          )
         ORDER BY keyword_rank DESC, s.created_at DESC
         LIMIT $3
       `,
-      [normalizedQuery, source || null, safeLimit],
+      [ftsQuery, source || null, expandedLimit, isFacilityIntent],
     );
 
-    const rows = ftsResult.rows;
-    if (rows.length > 0) {
-      return rows.map((row) => {
+    const primaryRows = primaryFtsResult.rows as Array<Record<string, unknown>>;
+    const primaryCandidates = primaryRows.slice(0, safeLimit).map((row) => ({
+      sectionId: String(row.section_id || ''),
+      documentId: String(row.document_id || ''),
+      title: String(row.title || ''),
+      source: String(row.source || ''),
+      content: String(row.content || ''),
+      keywordRank: Math.max(0.0001, Number(row.keyword_rank || 0.0001)),
+      embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
+      documentMetadata: (row.document_metadata || {}) as Record<string, unknown>,
+      sectionMetadata: (row.section_metadata || {}) as Record<string, unknown>,
+    }));
+
+    const facilityPrimaryThreshold = Math.max(4, Math.min(safeLimit, Math.ceil(safeLimit * 0.4)));
+    const shouldReturnPrimaryOnly =
+      primaryCandidates.length > 0 &&
+      (!isFacilityIntent || primaryCandidates.length >= facilityPrimaryThreshold);
+    if (shouldReturnPrimaryOnly) {
+      return primaryCandidates;
+    }
+
+    const tokenOrTsQuery = tokens.join(' | ').trim();
+    let fallbackRows: Array<Record<string, unknown>> = [];
+
+    if (tokenOrTsQuery) {
+      const fallbackFtsResult = await this.pool.query(
+        `
+          SELECT
+            s.id AS section_id,
+            s.document_id,
+            d.title,
+            d.source,
+            s.content,
+            s.embedding,
+            d.metadata AS document_metadata,
+            s.metadata AS section_metadata,
+            ts_rank_cd(to_tsvector('simple', s.content), to_tsquery('simple', $4)) AS keyword_rank
+          FROM kb_sections s
+          INNER JOIN kb_documents d ON d.id = s.document_id
+          WHERE (
+            to_tsvector('simple', s.content) @@ to_tsquery('simple', $4)
+            OR d.title ILIKE '%' || $1 || '%'
+          )
+            AND ($2::TEXT IS NULL OR d.source = $2)
+            AND (
+              $5::BOOLEAN = FALSE
+              OR LOWER(d.title) LIKE 'facilities_va.fixed.part_%'
+              OR LOWER(d.title) LIKE 'augusta va questions-answers%'
+              OR LOWER(d.title) LIKE 'va_poi_knowledge_base%'
+            )
+          ORDER BY keyword_rank DESC, s.created_at DESC
+          LIMIT $3
+        `,
+        [normalizedQuery, source || null, expandedLimit, tokenOrTsQuery, isFacilityIntent],
+      );
+      fallbackRows = fallbackFtsResult.rows as Array<Record<string, unknown>>;
+    }
+
+    if (fallbackRows.length === 0) {
+      const likeResult = await this.pool.query(
+        `
+          SELECT
+            s.id AS section_id,
+            s.document_id,
+            d.title,
+            d.source,
+            s.content,
+            s.embedding,
+            d.metadata AS document_metadata,
+            s.metadata AS section_metadata
+          FROM kb_sections s
+          INNER JOIN kb_documents d ON d.id = s.document_id
+          WHERE (
+            s.content ILIKE '%' || $1 || '%'
+            OR d.title ILIKE '%' || $1 || '%'
+            OR EXISTS (
+              SELECT 1
+              FROM UNNEST($4::TEXT[]) AS token
+              WHERE s.content ILIKE '%' || token || '%'
+                OR d.title ILIKE '%' || token || '%'
+            )
+          )
+            AND ($2::TEXT IS NULL OR d.source = $2)
+            AND (
+              $5::BOOLEAN = FALSE
+              OR LOWER(d.title) LIKE 'facilities_va.fixed.part_%'
+              OR LOWER(d.title) LIKE 'augusta va questions-answers%'
+              OR LOWER(d.title) LIKE 'va_poi_knowledge_base%'
+            )
+          ORDER BY s.created_at DESC
+          LIMIT $3
+        `,
+        [normalizedQuery, source || null, expandedLimit, tokens, isFacilityIntent],
+      );
+      fallbackRows = likeResult.rows as Array<Record<string, unknown>>;
+    }
+
+    const fallbackCandidates = fallbackRows
+      .map((row) => {
         const r = row as Record<string, unknown>;
         return {
           sectionId: String(r.section_id || ''),
@@ -407,65 +610,33 @@ export class StarterDb {
           title: String(r.title || ''),
           source: String(r.source || ''),
           content: String(r.content || ''),
-          keywordRank: Number(r.keyword_rank || 0),
+          keywordRank: Math.max(
+            computeLexicalFallbackRank(normalizedQuery, tokens, String(r.title || ''), String(r.content || '')),
+            Math.max(0.0001, Number(r.keyword_rank || 0.0001)),
+          ),
           embedding: Array.isArray(r.embedding) ? (r.embedding as number[]) : null,
           documentMetadata: (r.document_metadata || {}) as Record<string, unknown>,
           sectionMetadata: (r.section_metadata || {}) as Record<string, unknown>,
         };
-      });
+      })
+      .sort((a, b) => b.keywordRank - a.keywordRank);
+
+    if (primaryCandidates.length === 0) {
+      return fallbackCandidates.slice(0, safeLimit);
     }
 
-    const tokens = normalizedQuery
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .map((x) => x.trim())
-      .filter((x) => x.length >= 3)
-      .slice(0, 12);
+    const merged = new Map<string, KbSearchCandidateRecord>();
+    for (const candidate of primaryCandidates) {
+      merged.set(candidate.sectionId, candidate);
+    }
+    for (const candidate of fallbackCandidates) {
+      const existing = merged.get(candidate.sectionId);
+      if (!existing || candidate.keywordRank > existing.keywordRank) {
+        merged.set(candidate.sectionId, candidate);
+      }
+    }
 
-    const likeResult = await this.pool.query(
-      `
-        SELECT
-          s.id AS section_id,
-          s.document_id,
-          d.title,
-          d.source,
-          s.content,
-          s.embedding,
-          d.metadata AS document_metadata,
-          s.metadata AS section_metadata
-        FROM kb_sections s
-        INNER JOIN kb_documents d ON d.id = s.document_id
-        WHERE (
-          s.content ILIKE '%' || $1 || '%'
-          OR d.title ILIKE '%' || $1 || '%'
-          OR EXISTS (
-            SELECT 1
-            FROM UNNEST($4::TEXT[]) AS token
-            WHERE s.content ILIKE '%' || token || '%'
-              OR d.title ILIKE '%' || token || '%'
-          )
-        )
-          AND ($2::TEXT IS NULL OR d.source = $2)
-        ORDER BY s.created_at DESC
-        LIMIT $3
-      `,
-      [normalizedQuery, source || null, safeLimit, tokens],
-    );
-
-    return likeResult.rows.map((row) => {
-      const r = row as Record<string, unknown>;
-      return {
-        sectionId: String(r.section_id || ''),
-        documentId: String(r.document_id || ''),
-        title: String(r.title || ''),
-        source: String(r.source || ''),
-        content: String(r.content || ''),
-        keywordRank: 0.0001,
-        embedding: Array.isArray(r.embedding) ? (r.embedding as number[]) : null,
-        documentMetadata: (r.document_metadata || {}) as Record<string, unknown>,
-        sectionMetadata: (r.section_metadata || {}) as Record<string, unknown>,
-      };
-    });
+    return [...merged.values()].sort((a, b) => b.keywordRank - a.keywordRank).slice(0, safeLimit);
   }
 
   async listKbDocuments(limit = 100): Promise<KbDocumentSummary[]> {

@@ -54,6 +54,20 @@ interface RankedKbResult {
   };
 }
 
+interface KbSearchAuditEvent {
+  timestampISO: string;
+  requestId: string;
+  endpoint: '/kb/search' | '/search';
+  query: string;
+  sourceFilter?: string;
+  topK: number;
+  totalCandidates: number;
+  resultCount: number;
+  durationMs: number;
+  status: 'ok' | 'error';
+  error?: string;
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -104,6 +118,10 @@ function asBool(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+function normalizeTopK(value: unknown, fallback: number): number {
+  return Math.max(1, Math.min(20, Math.floor(asNumber(value, fallback))));
+}
+
 type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 
 function withAsync(handler: AsyncRouteHandler) {
@@ -112,14 +130,214 @@ function withAsync(handler: AsyncRouteHandler) {
   };
 }
 
+type KbQueryIntent = 'facility' | 'poi' | 'app' | 'general';
+
+const FACILITY_ANCHOR_STOPWORDS = new Set([
+  'va',
+  'veteran',
+  'veterans',
+  'medical',
+  'center',
+  'clinic',
+  'hospital',
+  'services',
+  'service',
+  'benefits',
+  'benefit',
+  'health',
+  'care',
+  'help',
+  'please',
+  'phone',
+  'address',
+  'hours',
+  'contact',
+  'location',
+  'nearest',
+  'closest',
+  'prosthetics',
+  'mental',
+  'primary',
+  'specialty',
+  'department',
+  'information',
+  'details',
+  'regarding',
+  'about',
+  'with',
+  'from',
+  'for',
+  'in',
+  'the',
+  'and',
+  'can',
+  'you',
+  'all',
+]);
+
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  alabama: 'al',
+  alaska: 'ak',
+  arizona: 'az',
+  arkansas: 'ar',
+  california: 'ca',
+  colorado: 'co',
+  connecticut: 'ct',
+  delaware: 'de',
+  florida: 'fl',
+  georgia: 'ga',
+  hawaii: 'hi',
+  idaho: 'id',
+  illinois: 'il',
+  indiana: 'in',
+  iowa: 'ia',
+  kansas: 'ks',
+  kentucky: 'ky',
+  louisiana: 'la',
+  maine: 'me',
+  maryland: 'md',
+  massachusetts: 'ma',
+  michigan: 'mi',
+  minnesota: 'mn',
+  mississippi: 'ms',
+  missouri: 'mo',
+  montana: 'mt',
+  nebraska: 'ne',
+  nevada: 'nv',
+  'new hampshire': 'nh',
+  'new jersey': 'nj',
+  'new mexico': 'nm',
+  'new york': 'ny',
+  'north carolina': 'nc',
+  'north dakota': 'nd',
+  ohio: 'oh',
+  oklahoma: 'ok',
+  oregon: 'or',
+  pennsylvania: 'pa',
+  'rhode island': 'ri',
+  'south carolina': 'sc',
+  'south dakota': 'sd',
+  tennessee: 'tn',
+  texas: 'tx',
+  utah: 'ut',
+  vermont: 'vt',
+  virginia: 'va',
+  washington: 'wa',
+  'west virginia': 'wv',
+  wisconsin: 'wi',
+  wyoming: 'wy',
+};
+
+function extractFacilityAnchors(query: string): string[] {
+  const normalized = query.toLowerCase();
+  const tokens = normalized
+    .split(/[^a-z0-9]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2 && !FACILITY_ANCHOR_STOPWORDS.has(x));
+
+  const anchors = new Set(tokens);
+  for (const [stateName, stateCode] of Object.entries(STATE_NAME_TO_CODE)) {
+    if (normalized.includes(stateName)) {
+      anchors.add(stateCode);
+    }
+  }
+
+  return [...anchors].slice(0, 8);
+}
+
+function facilitySpecificityBoost(query: string, title: string, content: string): number {
+  const anchors = extractFacilityAnchors(query);
+  if (anchors.length === 0) return 0;
+
+  const queryLower = query.toLowerCase();
+  const haystack = `${title}\n${content.slice(0, 2400)}`.toLowerCase();
+  const anchorHits = anchors.filter((token) => haystack.includes(token)).length;
+  if (anchorHits === 0) return -0.45;
+
+  const hitRatio = anchorHits / anchors.length;
+  let boost = Math.min(0.6, hitRatio * 0.6);
+
+  if (anchors.includes('ga') && /"state"\s*:\s*"ga"/.test(haystack)) {
+    boost += 0.15;
+  }
+
+  const wantsDowntown = /\bdowntown\b/.test(queryLower);
+  const wantsUptown = /\buptown\b/.test(queryLower);
+  if (wantsDowntown) {
+    boost += /\bdowntown\b/.test(haystack) ? 0.2 : -0.35;
+  }
+  if (wantsUptown) {
+    boost += /\buptown\b/.test(haystack) ? 0.2 : -0.35;
+  }
+
+  return boost;
+}
+
+function detectKbQueryIntent(query: string): KbQueryIntent {
+  const normalized = query.toLowerCase();
+
+  if (
+    /\b(where is|inside|floor|building|room|simlearn|poi|hospital navigation|indoor)\b/.test(
+      normalized,
+    )
+  ) {
+    return 'poi';
+  }
+
+  if (
+    /\b(facility|medical center|clinic|hospital|vet center|address|phone|hours|contact|location|nearest|closest|downtown|uptown)\b/.test(
+      normalized,
+    )
+  ) {
+    return 'facility';
+  }
+
+  if (
+    /\b(app|mobile engagement|check-in|appointment check-in|travel claim|manage appointments)\b/.test(
+      normalized,
+    )
+  ) {
+    return 'app';
+  }
+
+  return 'general';
+}
+
+function corpusIntentBoost(intent: KbQueryIntent, title: string, query: string): number {
+  const normalizedTitle = title.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+
+  if (intent === 'facility') {
+    const isContactIntent = /\b(address|phone|hours|contact)\b/.test(normalizedQuery);
+    if (normalizedTitle.startsWith('facilities_va.fixed.part_')) return isContactIntent ? 0.55 : 0.35;
+    if (normalizedTitle.includes('va_poi_knowledge_base')) return -0.4;
+    if (normalizedTitle.includes('augusta va questions-answers')) return isContactIntent ? -0.2 : -0.05;
+    if (normalizedTitle.startsWith('va_knowledge_base_')) return isContactIntent ? -0.2 : -0.12;
+  }
+
+  if (intent === 'poi') {
+    if (normalizedTitle.includes('va_poi_knowledge_base')) return 0.45;
+    if (normalizedTitle.startsWith('facilities_va.fixed.part_')) return 0.05;
+    if (normalizedTitle.startsWith('va_knowledge_base_')) return -0.15;
+  }
+
+  if (intent === 'app') {
+    if (normalizedTitle.startsWith('va_knowledge_base_')) return 0.15;
+  }
+
+  return 0;
+}
+
 function rankKbCandidates(
   candidates: KbSearchCandidateRecord[],
+  query: string,
   queryEmbedding: number[] | null,
   keywordWeight: number,
   semanticWeight: number,
 ): RankedKbResult[] {
   if (candidates.length === 0) return [];
 
+  const intent = detectKbQueryIntent(query);
   const maxKeywordRank = Math.max(0.0001, ...candidates.map((x) => x.keywordRank));
 
   return candidates
@@ -134,9 +352,18 @@ function rankKbCandidates(
         }
       }
 
-      const fused = queryEmbedding
+      const fusedBase = queryEmbedding
         ? keywordWeight * keyword + semanticWeight * semantic
         : keyword;
+      const fused = Math.max(
+        0,
+        Math.min(
+          2,
+          fusedBase +
+            corpusIntentBoost(intent, candidate.title, query) +
+            (intent === 'facility' ? facilitySpecificityBoost(query, candidate.title, candidate.content) : 0),
+        ),
+      );
 
       return {
         sectionId: candidate.sectionId,
@@ -269,21 +496,30 @@ async function bootstrap(): Promise<void> {
 
     const query = requireString(payload.query, 'query');
     const source = optionalString(payload.source);
-    const topK = Math.max(1, Math.min(20, Math.floor(asNumber(payload.topK, config.kbTopK))));
+    const topK = normalizeTopK(payload.topK, config.kbTopK);
+    const intent = detectKbQueryIntent(query);
+    const desiredCandidateLimit =
+      intent === 'facility'
+        ? Math.max(7, topK + 2)
+        : intent === 'poi'
+          ? Math.max(8, topK * 2)
+          : Math.max(10, topK * 3);
+    const candidateLimit = Math.min(config.kbKeywordCandidates, desiredCandidateLimit);
 
-    const candidates = await db.searchKbKeyword(query, config.kbKeywordCandidates, source);
+    const candidates = await db.searchKbKeyword(query, candidateLimit, source);
 
     let queryEmbedding: number[] | null = null;
     const hasEmbeddings = candidates.some((x) => Array.isArray(x.embedding) && x.embedding.length > 0);
+    const allowSemanticRerank = intent === 'app';
 
-    if (hasEmbeddings && config.kbOpenAiApiKey) {
+    if (allowSemanticRerank && hasEmbeddings && config.kbOpenAiApiKey) {
       try {
         const vectors = await createOpenAiEmbeddings(
           {
             apiKey: config.kbOpenAiApiKey,
             baseUrl: config.kbOpenAiBaseUrl,
             model: config.kbEmbeddingModel,
-            timeoutMs: config.kbEmbeddingTimeoutMs,
+            timeoutMs: config.kbSearchEmbeddingTimeoutMs,
           },
           [query],
         );
@@ -295,6 +531,7 @@ async function bootstrap(): Promise<void> {
 
     const ranked = rankKbCandidates(
       candidates,
+      query,
       queryEmbedding,
       config.kbKeywordWeight,
       config.kbSemanticWeight,
@@ -324,6 +561,29 @@ async function bootstrap(): Promise<void> {
         },
       })),
     };
+  }
+
+  const KB_SEARCH_AUDIT_MAX = 500;
+  const kbSearchAuditEvents: KbSearchAuditEvent[] = [];
+
+  function recordKbSearchAudit(event: KbSearchAuditEvent): void {
+    kbSearchAuditEvents.unshift(event);
+    if (kbSearchAuditEvents.length > KB_SEARCH_AUDIT_MAX) {
+      kbSearchAuditEvents.length = KB_SEARCH_AUDIT_MAX;
+    }
+
+    const queryPreview = truncateForSnippet(event.query, 120).replace(/\s+/g, ' ');
+    if (event.status === 'ok') {
+      console.log(
+        `[kb:audit] requestId=${event.requestId} endpoint=${event.endpoint} status=ok topK=${event.topK} candidates=${event.totalCandidates} results=${event.resultCount} durationMs=${event.durationMs} query="${queryPreview}"`,
+      );
+      return;
+    }
+
+    const err = truncateForSnippet(event.error || 'unknown error', 120).replace(/\s+/g, ' ');
+    console.warn(
+      `[kb:audit] requestId=${event.requestId} endpoint=${event.endpoint} status=error durationMs=${event.durationMs} error="${err}" query="${queryPreview}"`,
+    );
   }
 
   if (config.kbEnabled) {
@@ -429,15 +689,44 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
-    const result = await searchKnowledgeBase({ query: q, topK: 10 });
-    res.json({
-      query: result.query,
-      results: result.results.map((x) => ({
-        id: x.sectionId,
-        title: x.title,
-        text: x.snippet,
-      })),
-    });
+    const requestId = asString(res.getHeader('x-request-id')) || createRequestId();
+    const startedAtMs = Date.now();
+    try {
+      const result = await searchKnowledgeBase({ query: q, topK: 10 });
+      recordKbSearchAudit({
+        timestampISO: new Date().toISOString(),
+        requestId,
+        endpoint: '/search',
+        query: q,
+        topK: result.topK,
+        totalCandidates: result.totalCandidates,
+        resultCount: result.results.length,
+        durationMs: Date.now() - startedAtMs,
+        status: 'ok',
+      });
+      res.json({
+        query: result.query,
+        results: result.results.map((x) => ({
+          id: x.sectionId,
+          title: x.title,
+          text: x.snippet,
+        })),
+      });
+    } catch (err) {
+      recordKbSearchAudit({
+        timestampISO: new Date().toISOString(),
+        requestId,
+        endpoint: '/search',
+        query: q,
+        topK: 10,
+        totalCandidates: 0,
+        resultCount: 0,
+        durationMs: Date.now() - startedAtMs,
+        status: 'error',
+        error: asErrorMessage(err),
+      });
+      throw err;
+    }
   }));
 
   app.post('/kb/ingest', withAsync(async (req: Request, res: Response) => {
@@ -454,14 +743,45 @@ async function bootstrap(): Promise<void> {
   }));
 
   app.post('/kb/search', withAsync(async (req: Request, res: Response) => {
+    const payload = (req.body || {}) as KbSearchRequestBody;
+    const requestId = asString(res.getHeader('x-request-id')) || createRequestId();
+    const query = asString(payload.query);
+    const sourceFilter = optionalString(payload.source);
+    const topK = normalizeTopK(payload.topK, config.kbTopK);
+    const startedAtMs = Date.now();
+
     try {
-      const payload = (req.body || {}) as KbSearchRequestBody;
       const result = await searchKnowledgeBase(payload);
+      recordKbSearchAudit({
+        timestampISO: new Date().toISOString(),
+        requestId,
+        endpoint: '/kb/search',
+        query: result.query,
+        sourceFilter,
+        topK: result.topK,
+        totalCandidates: result.totalCandidates,
+        resultCount: result.results.length,
+        durationMs: Date.now() - startedAtMs,
+        status: 'ok',
+      });
       res.json({
         ok: true,
         ...result,
       });
     } catch (err) {
+      recordKbSearchAudit({
+        timestampISO: new Date().toISOString(),
+        requestId,
+        endpoint: '/kb/search',
+        query,
+        sourceFilter,
+        topK,
+        totalCandidates: 0,
+        resultCount: 0,
+        durationMs: Date.now() - startedAtMs,
+        status: 'error',
+        error: asErrorMessage(err),
+      });
       res.status(400).json({ ok: false, error: asErrorMessage(err) });
     }
   }));
@@ -628,6 +948,12 @@ async function bootstrap(): Promise<void> {
     const limitRaw = asString(req.query.limit);
     const limit = Number(limitRaw || 100);
     const events = await db.listRecentEvents(limit);
+    res.json({ ok: true, count: events.length, events });
+  }));
+
+  app.get('/internal/kb-search-audit', withAsync(async (req: Request, res: Response) => {
+    const limit = Math.max(1, Math.min(500, Math.floor(asNumber(req.query.limit, 100))));
+    const events = kbSearchAuditEvents.slice(0, limit);
     res.json({ ok: true, count: events.length, events });
   }));
 

@@ -41,6 +41,7 @@ Default port: `4011`.
 - `KB_SEMANTIC_WEIGHT` (default `0.65`)
 - `KB_EMBEDDING_MODEL` (default `text-embedding-3-small`)
 - `KB_EMBEDDING_TIMEOUT_MS` (default `12000`)
+- `KB_SEARCH_EMBEDDING_TIMEOUT_MS` (default `2500`, search-time semantic timeout)
 - `TOOLS_WEBHOOK_URL` (if empty, events are stored but not delivered externally)
 - `TOOLS_WEBHOOK_SECRET` (enables `x-signature`)
 - `TOOLS_WEBHOOK_TIMEOUT_MS` (default `4000`)
@@ -71,5 +72,7 @@ Signature format:
 ## Internal inspection endpoint
 
 - `GET /internal/events?limit=100`
+- `GET /internal/kb-search-audit?limit=100`
 
 Returns recent tool events and statuses (`queued`, `retrying`, `delivered`, `failed`).
+`/internal/kb-search-audit` returns recent KB search request audits (query, endpoint, candidates, results, duration, status) so you can verify retrieval hits during live calls.

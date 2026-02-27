@@ -32,6 +32,16 @@ const OPENAI_TTS_INSTRUCTIONS =
   process.env.OPENAI_TTS_INSTRUCTIONS ||
   'Energetic, warm, and helpful female assistant voice. Natural and friendly.';
 const ENABLE_TOOLS = (process.env.ENABLE_TOOLS || 'true').toLowerCase() === 'true';
+const KB_SEARCH_CACHE_TTL_MS_RAW = Number(process.env.KB_SEARCH_CACHE_TTL_MS || 120_000);
+const KB_SEARCH_CACHE_MAX_ENTRIES_RAW = Number(process.env.KB_SEARCH_CACHE_MAX_ENTRIES || 256);
+const KB_SEARCH_CACHE_TTL_MS =
+  Number.isFinite(KB_SEARCH_CACHE_TTL_MS_RAW) && KB_SEARCH_CACHE_TTL_MS_RAW > 0
+    ? KB_SEARCH_CACHE_TTL_MS_RAW
+    : 120_000;
+const KB_SEARCH_CACHE_MAX_ENTRIES =
+  Number.isFinite(KB_SEARCH_CACHE_MAX_ENTRIES_RAW) && KB_SEARCH_CACHE_MAX_ENTRIES_RAW > 0
+    ? Math.floor(KB_SEARCH_CACHE_MAX_ENTRIES_RAW)
+    : 256;
 
 const AGENT_SYSTEM_PROMPT_FILE = process.env.AGENT_SYSTEM_PROMPT_FILE || './prompt.md';
 const AGENT_SYSTEM_PROMPT = process.env.AGENT_SYSTEM_PROMPT || '';
@@ -41,13 +51,27 @@ const AGENT_GREETING =
 const MAX_SPOKEN_WORDS = Number(process.env.AGENT_MAX_SPOKEN_WORDS || 24);
 const VOICE_ALLOW_INTERRUPTIONS =
   (process.env.VOICE_ALLOW_INTERRUPTIONS || 'true').toLowerCase() === 'true';
-const VOICE_MIN_INTERRUPTION_DURATION_MS = Number(
-  process.env.VOICE_MIN_INTERRUPTION_DURATION_MS || (USE_OPENAI_STT ? 320 : 500),
+const VOICE_MIN_INTERRUPTION_DURATION_MS_RAW = Number(
+  process.env.VOICE_MIN_INTERRUPTION_DURATION_MS || (USE_OPENAI_STT ? 120 : 500),
 );
-const VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED = Number(
-  process.env.VOICE_MIN_INTERRUPTION_WORDS || (USE_OPENAI_STT ? 0 : 2),
+const VOICE_MIN_INTERRUPTION_DURATION_MS = Number.isFinite(VOICE_MIN_INTERRUPTION_DURATION_MS_RAW)
+  ? Math.max(0, VOICE_MIN_INTERRUPTION_DURATION_MS_RAW)
+  : USE_OPENAI_STT
+    ? 120
+    : 500;
+const VOICE_MIN_INTERRUPTION_WORDS_DEFAULT = USE_OPENAI_STT ? 0 : 2;
+const VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED_RAW = Number(
+  process.env.VOICE_MIN_INTERRUPTION_WORDS || VOICE_MIN_INTERRUPTION_WORDS_DEFAULT,
 );
-const VOICE_MIN_INTERRUPTION_WORDS = USE_OPENAI_STT ? 0 : VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED;
+const VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED = Number.isFinite(VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED_RAW)
+  ? VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED_RAW
+  : VOICE_MIN_INTERRUPTION_WORDS_DEFAULT;
+const VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT =
+  (process.env.VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT || 'true').toLowerCase() === 'true';
+const VOICE_MIN_INTERRUPTION_WORDS =
+  USE_OPENAI_STT && VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT
+    ? 0
+    : Math.max(0, VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED);
 const VOICE_MIN_ENDPOINTING_DELAY_MS = Number(
   process.env.VOICE_MIN_ENDPOINTING_DELAY_MS || (USE_OPENAI_STT ? 400 : 500),
 );
@@ -86,6 +110,131 @@ function loadSystemPrompt(): string {
 }
 
 const SYSTEM_PROMPT = loadSystemPrompt();
+
+const KB_QUERY_NORMALIZATION_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bpactact\b/gi, 'PACT Act'],
+  [/\bpact[\s-]*act\b/gi, 'PACT Act'],
+  [/\bpak[\s-]*tact\b/gi, 'PACT Act'],
+  [/\bpakt[\s-]*act\b/gi, 'PACT Act'],
+  [/\bpacked[\s-]*act\b/gi, 'PACT Act'],
+  [/\bsimleran\b/gi, 'simLearn'],
+  [/\bsim[\s-]*learn\b/gi, 'simLearn'],
+  [/\bwet\s+center\b/gi, 'Vet Center'],
+  [/\bv[ae]t[\s-]*center\b/gi, 'Vet Center'],
+];
+
+function normalizeKbQuery(query: string): string {
+  let normalized = query;
+  for (const [pattern, replacement] of KB_QUERY_NORMALIZATION_RULES) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+  return normalized.replace(/\s+/g, ' ').trim();
+}
+
+function isFacilityLikeKbQuery(query: string): boolean {
+  return /\b(facility|medical center|clinic|hospital|vet center|address|phone|hours|contact|location|nearest|closest|downtown|city|state)\b/i.test(
+    query,
+  );
+}
+
+function buildFacilityFallbackQuery(query: string): string | null {
+  const simplified = query
+    .replace(/\b(address|phone|hours?|contact|location|nearest|closest|downtown|city|state|please|find|show|for me|near me)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!simplified) return null;
+  if (simplified.toLowerCase() === query.toLowerCase()) return null;
+  return simplified;
+}
+
+type KbSearchToolResponse = {
+  ok?: boolean;
+  query?: string;
+  results?: Array<{
+    title?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+};
+
+function getKbTitles(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const results = (payload as KbSearchToolResponse).results;
+  if (!Array.isArray(results)) return [];
+  return results.map((x) => String(x?.title || '')).filter((x) => Boolean(x));
+}
+
+function hasFacilityDirectoryHit(payload: unknown): boolean {
+  return getKbTitles(payload).some((title) => title.startsWith('facilities_VA.fixed.part_'));
+}
+
+function kbPayloadContainsText(payload: unknown, needle: string): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const results = (payload as KbSearchToolResponse).results;
+  if (!Array.isArray(results) || !needle.trim()) return false;
+
+  const q = needle.toLowerCase();
+  return results.some((item) => {
+    const title = String(item?.title || '').toLowerCase();
+    const snippet = String(item?.snippet || '').toLowerCase();
+    const content = String(item?.content || '').toLowerCase();
+    return title.includes(q) || snippet.includes(q) || content.includes(q);
+  });
+}
+
+const kbSearchCache = new Map<string, { value: KbSearchToolResponse; expiresAtMs: number }>();
+const kbSearchInFlight = new Map<string, Promise<KbSearchToolResponse>>();
+
+function makeKbSearchCacheKey(query: string, topK: number): string {
+  return `${topK}|${query.trim().toLowerCase()}`;
+}
+
+function readKbSearchCache(query: string, topK: number): KbSearchToolResponse | null {
+  const key = makeKbSearchCacheKey(query, topK);
+  const hit = kbSearchCache.get(key);
+  if (!hit) return null;
+  if (Date.now() >= hit.expiresAtMs) {
+    kbSearchCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function writeKbSearchCache(query: string, topK: number, value: KbSearchToolResponse): void {
+  const key = makeKbSearchCacheKey(query, topK);
+  kbSearchCache.set(key, { value, expiresAtMs: Date.now() + KB_SEARCH_CACHE_TTL_MS });
+
+  while (kbSearchCache.size > KB_SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = kbSearchCache.keys().next().value;
+    if (!oldestKey) break;
+    kbSearchCache.delete(oldestKey);
+  }
+}
+
+async function runKbSearch(query: string, topK: number): Promise<KbSearchToolResponse> {
+  const cached = readKbSearchCache(query, topK);
+  if (cached) {
+    console.log(`[tool:db_search] cacheHit query="${query.replace(/\s+/g, ' ').slice(0, 120)}" topK=${topK}`);
+    return cached;
+  }
+
+  const key = makeKbSearchCacheKey(query, topK);
+  const inFlight = kbSearchInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const result = (await dbPost('/kb/search', { query, topK })) as KbSearchToolResponse;
+    writeKbSearchCache(query, topK, result);
+    return result;
+  })();
+
+  kbSearchInFlight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    kbSearchInFlight.delete(key);
+  }
+}
 
 function extractStringLike(value: unknown): string | undefined {
   if (typeof value === 'string') return value.trim();
@@ -346,26 +495,88 @@ async function dbPost(path: string, body: unknown) {
     headers.authorization = `Bearer ${DB_API_AUTH_TOKEN}`;
   }
 
-  const res = await fetch(`${DB_API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`DB POST ${path} failed: ${res.status}`);
-  return res.json();
+  const startedAtMs = Date.now();
+  const queryPreview =
+    path === '/kb/search' && body && typeof body === 'object' && typeof (body as { query?: unknown }).query === 'string'
+      ? String((body as { query: string }).query).replace(/\s+/g, ' ').slice(0, 120)
+      : '';
+
+  try {
+    const res = await fetch(`${DB_API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    const durationMs = Date.now() - startedAtMs;
+    const requestId = res.headers.get('x-request-id') || '';
+    const requestIdSuffix = requestId ? ` requestId=${requestId}` : '';
+    const querySuffix = queryPreview ? ` query="${queryPreview}"` : '';
+
+    if (!res.ok) {
+      console.warn(`[tools:http] POST ${path} status=${res.status} durationMs=${durationMs}${requestIdSuffix}${querySuffix}`);
+      throw new Error(`DB POST ${path} failed: ${res.status}`);
+    }
+
+    console.log(`[tools:http] POST ${path} status=${res.status} durationMs=${durationMs}${requestIdSuffix}${querySuffix}`);
+    return res.json();
+  } catch (err) {
+    const durationMs = Date.now() - startedAtMs;
+    const querySuffix = queryPreview ? ` query="${queryPreview}"` : '';
+    console.warn(`[tools:http] POST ${path} failed durationMs=${durationMs}${querySuffix} error=${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
 }
 
 class DbAgent extends voice.Agent {
   constructor() {
     const tools = {
       db_search: llm.tool({
-        description: 'Search the knowledge base / policy store and return best citations',
+        description:
+          'Search the VA knowledge base and return citations. Use this before giving facility-specific phone numbers, addresses, room numbers, hours, extensions, or clinic contact details.',
         parameters: z.object({ query: zLooseString }),
-        execute: async ({ query }) =>
-          dbPost('/kb/search', {
-            query: String(query),
-            topK: 5,
-          }),
+        execute: async ({ query }) => {
+          const rawQuery = String(query);
+          const normalizedQuery = normalizeKbQuery(rawQuery);
+          const queryText = normalizedQuery.replace(/\s+/g, ' ').slice(0, 120);
+          if (normalizedQuery !== rawQuery) {
+            const rawPreview = rawQuery.replace(/\s+/g, ' ').slice(0, 120);
+            console.log(`[tool:db_search] queryNormalized raw="${rawPreview}" normalized="${queryText}"`);
+          } else {
+            console.log(`[tool:db_search] query="${queryText}"`);
+          }
+
+          const isFacilityLike = isFacilityLikeKbQuery(normalizedQuery);
+          const queryWantsVetCenter = /\bvet center\b/i.test(normalizedQuery);
+          const primaryTopK = isFacilityLike ? 5 : 4;
+          const primaryResult = await runKbSearch(normalizedQuery, primaryTopK);
+
+          const primarySpecificityOk =
+            !queryWantsVetCenter || kbPayloadContainsText(primaryResult, 'vet center');
+
+          if ((!isFacilityLike || hasFacilityDirectoryHit(primaryResult)) && primarySpecificityOk) {
+            return primaryResult;
+          }
+
+          const fallbackQuery = buildFacilityFallbackQuery(normalizedQuery);
+          if (!fallbackQuery) {
+            return primaryResult;
+          }
+
+          const fallbackResult = await runKbSearch(fallbackQuery, 5);
+
+          const fallbackSpecificityOk =
+            !queryWantsVetCenter || kbPayloadContainsText(fallbackResult, 'vet center');
+
+          if (hasFacilityDirectoryHit(fallbackResult) && fallbackSpecificityOk) {
+            console.log(
+              `[tool:db_search] fallbackQuerySelected original="${queryText}" fallback="${fallbackQuery.slice(0, 120)}"`,
+            );
+            return fallbackResult;
+          }
+
+          return primaryResult;
+        },
       }),
       save_contact: llm.tool({
         description: 'Save confirmed user contact info (name + email) into backend',
@@ -510,7 +721,7 @@ class DbAgent extends voice.Agent {
         apiKey: process.env.OPENAI_API_KEY,
         temperature: OPENAI_TEMPERATURE,
         maxCompletionTokens: OPENAI_MAX_COMPLETION_TOKENS,
-        ...(ENABLE_TOOLS ? {} : { toolChoice: 'none', parallelToolCalls: false }),
+        ...(ENABLE_TOOLS ? { parallelToolCalls: false } : { toolChoice: 'none', parallelToolCalls: false }),
       }),
       stt: sttClient,
       tts: ttsClient,
@@ -657,9 +868,9 @@ export default defineAgent({
       `[agent:voice] allowInterruptions=${VOICE_ALLOW_INTERRUPTIONS} minInterruptionMs=${VOICE_MIN_INTERRUPTION_DURATION_MS} minInterruptionWords=${VOICE_MIN_INTERRUPTION_WORDS} endpointingMs=${VOICE_MIN_ENDPOINTING_DELAY_MS}-${VOICE_MAX_ENDPOINTING_DELAY_MS}`,
     );
 
-    if (USE_OPENAI_STT && VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED > 0) {
+    if (USE_OPENAI_STT && VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT) {
       console.warn(
-        `[agent:voice:warn] OpenAI STT mode forces minInterruptionWords=0 for fast barge-in (configured=${VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED}).`,
+        `[agent:voice:warn] OpenAI STT mode is forcing minInterruptionWords=0 via VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT=true (configured=${VOICE_MIN_INTERRUPTION_WORDS_CONFIGURED}).`,
       );
     }
 

@@ -5,8 +5,8 @@ This branch runs the assistant with:
 - LiveKit server (local, Docker)
 - Agent worker (Node/TypeScript)
 - OpenAI cloud LLM (`gpt-4o-mini` by default)
-- Local STT service (faster-whisper)
-- Local TTS service (Piper)
+- OpenAI cloud STT (`gpt-4o-mini-transcribe`) and TTS (`gpt-4o-mini-tts`) by default
+- Optional local STT/TTS fallback services (`apps/stt-svc`, `apps/tts-svc`)
 - Tool/API backend (`db-mock` dev default or `tools-api-starter` production baseline)
 - Token server for browser joins + agent dispatch
 
@@ -28,6 +28,7 @@ This branch runs the assistant with:
 ## Documentation
 
 - Developer index: `docs/README.md`
+- General guide (where to start by team): `docs/GENERAL_GUIDE.md`
 - Architecture + diagrams: `docs/ARCHITECTURE.md`
 - Productization blueprint: `docs/PRODUCTIZATION_E2E.md`
 - Deployment runbook: `docs/DEPLOYMENT_RUNBOOK.md`
@@ -124,10 +125,14 @@ Then set in `.env`:
 - `DB_API_BASE_URL=http://127.0.0.1:4011`
 - `DB_API_AUTH_TOKEN=<TOOLS_API_AUTH_TOKEN>` if `TOOLS_API_REQUIRE_AUTH=true`
 
-For faster barge-in when caller speaks over assistant (OpenAI STT path), keep:
+For balanced barge-in (fast but with fewer false cuts) on OpenAI STT path, keep:
 
 - `VOICE_ALLOW_INTERRUPTIONS=true`
+- `VOICE_MIN_INTERRUPTION_DURATION_MS=120`
 - `VOICE_MIN_INTERRUPTION_WORDS=0`
+- `VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT=true`
+- `VOICE_MIN_ENDPOINTING_DELAY_MS=200`
+- `VOICE_MAX_ENDPOINTING_DELAY_MS=900`
 
 ## 5) Get token
 

@@ -19,6 +19,7 @@ export interface StarterConfig {
   kbSemanticWeight: number;
   kbEmbeddingModel: string;
   kbEmbeddingTimeoutMs: number;
+  kbSearchEmbeddingTimeoutMs: number;
   kbOpenAiApiKey: string;
   kbOpenAiBaseUrl: string;
 }
@@ -72,6 +73,12 @@ export function loadConfig(): StarterConfig {
     kbSemanticWeight: totalWeight > 0 ? semanticWeight / totalWeight : 0.65,
     kbEmbeddingModel: String(process.env.KB_EMBEDDING_MODEL || 'text-embedding-3-small').trim(),
     kbEmbeddingTimeoutMs: asNumberInRange(process.env.KB_EMBEDDING_TIMEOUT_MS, 12_000, 1_000, 60_000),
+    kbSearchEmbeddingTimeoutMs: asNumberInRange(
+      process.env.KB_SEARCH_EMBEDDING_TIMEOUT_MS,
+      2_500,
+      500,
+      30_000,
+    ),
     kbOpenAiApiKey: String(process.env.OPENAI_API_KEY || '').trim(),
     kbOpenAiBaseUrl: String(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1')
       .trim()

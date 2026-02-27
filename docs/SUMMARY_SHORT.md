@@ -32,12 +32,13 @@ This repo now also includes a distribution-ready developer kit:
 
 ## Stability profile
 
-Voice interruption thresholds were increased to reduce false interrupts and TTS abort churn:
+Voice profile is tuned for fast interruption (barge-in) with acceptable stability:
 
-- `VOICE_MIN_INTERRUPTION_DURATION_MS=500`
-- `VOICE_MIN_INTERRUPTION_WORDS=2`
-- `VOICE_MIN_ENDPOINTING_DELAY_MS=500`
-- `VOICE_MAX_ENDPOINTING_DELAY_MS=3000`
+- `VOICE_MIN_INTERRUPTION_DURATION_MS=120`
+- `VOICE_MIN_INTERRUPTION_WORDS=0`
+- `VOICE_FORCE_ZERO_INTERRUPTION_WORDS_FOR_OPENAI_STT=true`
+- `VOICE_MIN_ENDPOINTING_DELAY_MS=200`
+- `VOICE_MAX_ENDPOINTING_DELAY_MS=900`
 
 ## Where developers should start
 
